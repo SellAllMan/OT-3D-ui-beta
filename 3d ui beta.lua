@@ -1985,45 +1985,139 @@ minBtn.Activated:Connect(function()
 end)
 
 -- ====================================================================
--- Wardrobe Camera Alignment & Summon Logic
+-- Wardrobe Cinematic Cutscene & Camera Logic
 -- ====================================================================
-local function enterWardrobeCamera()
+local savedOriginalRootCFrame = nil
+local savedOriginalCamCFrame = nil
+local isWardrobeCutscenePlaying = false
+
+local function playEnterWardrobeCutscene()
+    local root = getRootPart()
+    local hum = getHumanoid()
+    if not root or not hum then return end
+
+    isWardrobeCutscenePlaying = true
+    savedOriginalRootCFrame = root.CFrame
+    savedOriginalCamCFrame = camera.CFrame
+
+    -- ยึดตำแหน่งตัวละครชั่วคราวเพื่อความนิ่งระหว่างเล่นคัตซีน
+    root.AssemblyLinearVelocity = Vector3.zero
+    root.AssemblyAngularVelocity = Vector3.zero
+    root.Anchored = true
+
+    -- [ Phase 1: คัตซีนกล้องซูมถอยหลังออกมาก่อน (Cinematic Zoom Out) ]
+    local zoomOutDistance = 8.5
+    local targetCamPos = root.Position - (root.CFrame.LookVector * zoomOutDistance) + Vector3.new(0, 1.2, 0)
+    local targetLookAt = root.Position + Vector3.new(0, 1.0, 0)
+    local zoomOutCFrame = CFrame.lookAt(targetCamPos, targetLookAt)
+
+    local startCamCFrame = camera.CFrame
+    local zoomDuration = 0.42
+    local startTick = tick()
+
+    while (tick() - startTick < zoomDuration) do
+        local alpha = math.clamp((tick() - startTick) / zoomDuration, 0, 1)
+        local smoothAlpha = TweenService:GetValue(alpha, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+        camera.CFrame = startCamCFrame:Lerp(zoomOutCFrame, smoothAlpha)
+        RunService.RenderStepped:Wait()
+    end
+    camera.CFrame = zoomOutCFrame
+
+    task.wait(0.04)
+
+    -- [ Phase 2: ค่อยๆ หันตัวละครกลับมาประจันหน้ากับกล้อง (Character Turn Around) ]
+    local startRootCFrame = root.CFrame
+    local lookAtCameraPos = Vector3.new(camera.CFrame.Position.X, root.Position.Y, camera.CFrame.Position.Z)
+    local targetTurnCFrame = CFrame.lookAt(root.Position, lookAtCameraPos)
+
+    local turnDuration = 0.38
+    startTick = tick()
+
+    while (tick() - startTick < turnDuration) do
+        local alpha = math.clamp((tick() - startTick) / turnDuration, 0, 1)
+        local smoothAlpha = TweenService:GetValue(alpha, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+        root.CFrame = startRootCFrame:Lerp(targetTurnCFrame, smoothAlpha)
+        RunService.RenderStepped:Wait()
+    end
+    root.CFrame = targetTurnCFrame
+
+    -- [ Phase 3: ปลดล็อคระยะซูมให้ผู้เล่นหมุนดูรอบตัวละคร 360 องศาได้อิสระ ]
+    player.CameraMinZoomDistance = 5.0
+    player.CameraMaxZoomDistance = 12.0
+
+    if not freezeCharacter then
+        root.Anchored = false
+    end
+
+    isWardrobeCutscenePlaying = false
+end
+
+local function playExitWardrobeCutscene()
     local root = getRootPart()
     if not root then return end
 
-    -- หมุนหันหน้ามาหาด้านหน้าตัวละครเรา (Third Person Dressing View)
-    local targetCamPos = root.Position + (root.CFrame.LookVector * 8.0) + Vector3.new(0, 1.2, 0)
-    local targetLookAt = root.Position + Vector3.new(0, 0.8, 0)
-    local goalCFrame = CFrame.lookAt(targetCamPos, targetLookAt)
+    isWardrobeCutscenePlaying = true
+    root.AssemblyLinearVelocity = Vector3.zero
+    root.AssemblyAngularVelocity = Vector3.zero
+    root.Anchored = true
 
-    local startCFrame = camera.CFrame
-    local duration = 0.4
+    -- [ Phase 1: หันตัวละครและกล้องกลับไปหาทิศทางของ UI หลัก ]
+    local targetRootRot = savedOriginalRootCFrame and (savedOriginalRootCFrame.Rotation + root.Position) or root.CFrame
+    local startRootCFrame = root.CFrame
+
+    local targetCamPos = root.Position - (targetRootRot.LookVector * 8.5) + Vector3.new(0, 1.2, 0)
+    local targetCamLookAt = root.Position + (targetRootRot.LookVector * 6.0) + Vector3.new(0, 1.0, 0)
+    local targetCamCFrame = CFrame.lookAt(targetCamPos, targetCamLookAt)
+
+    local startCamCFrame = camera.CFrame
+    local turnBackDuration = 0.40
     local startTick = tick()
 
-    while (tick() - startTick < duration) do
-        local alpha = math.clamp((tick() - startTick) / duration, 0, 1)
+    while (tick() - startTick < turnBackDuration) do
+        local alpha = math.clamp((tick() - startTick) / turnBackDuration, 0, 1)
         local smoothAlpha = TweenService:GetValue(alpha, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-        camera.CFrame = startCFrame:Lerp(goalCFrame, smoothAlpha)
+        root.CFrame = startRootCFrame:Lerp(targetRootRot, smoothAlpha)
+        camera.CFrame = startCamCFrame:Lerp(targetCamCFrame, smoothAlpha)
         RunService.RenderStepped:Wait()
     end
-    camera.CFrame = goalCFrame
+    root.CFrame = targetRootRot
+    camera.CFrame = targetCamCFrame
 
-    -- อนุญาตให้ผู้เล่นหมุนกล้องดูรอบตัวละครได้อิสระ
-    player.CameraMinZoomDistance = 5.0
-    player.CameraMaxZoomDistance = 12.0
-end
-
-local function exitWardrobeCamera()
+    -- [ Phase 2: คัตซีนซูมกล้องกลับเข้าไปหา UI หลัก (Zoom In to Main UI) ]
     if isUIVisible then
         performZoomInAndAlign()
     else
+        local zoomDuration = 0.35
+        local zoomValue = Instance.new("NumberValue")
+        zoomValue.Value = 8.5
+
+        local zoomTween = TweenService:Create(zoomValue, TweenInfo.new(zoomDuration, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            Value = 0.5
+        })
+
+        local connection = zoomValue.Changed:Connect(function(val)
+            player.CameraMinZoomDistance = val
+            player.CameraMaxZoomDistance = val
+        end)
+
+        zoomTween:Play()
+        zoomTween.Completed:Wait()
+        connection:Disconnect()
+        zoomValue:Destroy()
+
         player.CameraMinZoomDistance = 0.5
         player.CameraMaxZoomDistance = 128
     end
+
+    if not freezeCharacter then
+        root.Anchored = false
+    end
+
+    isWardrobeCutscenePlaying = false
 end
 
 summonWardrobeWithAnimation = function()
-    if isWardrobeVisible or isWardrobeAnimating then return end
+    if isWardrobeVisible or isWardrobeAnimating or isWardrobeCutscenePlaying then return end
     isWardrobeAnimating = true
 
     local char = player.Character or player.CharacterAdded:Wait()
@@ -2033,10 +2127,11 @@ summonWardrobeWithAnimation = function()
         return
     end
 
-    enterWardrobeCamera()
+    -- เล่นคัตซีนซูมออกก่อน แล้วค่อยหันตัวละครมาหาหน้ากล้อง
+    playEnterWardrobeCutscene()
 
-    -- พิกัดหน้าต่างใหม่อยู่ด้านซ้ายของจอ (ขวามือตัวละคร)
-    local wardrobeSpawnPos = root.Position + (root.CFrame.RightVector * 3.4) + (root.CFrame.LookVector * 1.6) + Vector3.new(0, 0.6, 0)
+    -- พิกัดหน้าต่าง 3D UI ใหม่อยู่ด้านซ้ายของหน้าจอ (ขวามือตัวละคร) ไม่บังตัวละคร
+    local wardrobeSpawnPos = root.Position - (camera.CFrame.RightVector * 3.4) + (camera.CFrame.LookVector * 1.5) + Vector3.new(0, 0.4, 0)
     local finalCFrame = getFacingCFrame(wardrobeSpawnPos)
 
     wardrobePart.Size = Vector3.new(0.2, 0.2, 0.05)
@@ -2083,7 +2178,7 @@ summonWardrobeWithAnimation = function()
 end
 
 hideWardrobeWithAnimation = function()
-    if not isWardrobeVisible or isWardrobeAnimating then return end
+    if not isWardrobeVisible or isWardrobeAnimating or isWardrobeCutscenePlaying then return end
     isWardrobeAnimating = true
 
     wardrobeBackSurfaceGui.Enabled = false
@@ -2105,7 +2200,8 @@ hideWardrobeWithAnimation = function()
     wardrobePart.Position = Vector3.new(0, 9999, 0)
     isWardrobeVisible = false
 
-    exitWardrobeCamera()
+    -- เล่นคัตซีนหันตัวละครกลับไปหา UI หลัก และซูมกล้องกลับเข้าไป
+    playExitWardrobeCutscene()
     isWardrobeAnimating = false
 end
 
