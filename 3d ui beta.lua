@@ -8,7 +8,20 @@ local TeleportService = game:GetService("TeleportService")
 local Workspace = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
-local camera = Workspace.CurrentCamera
+while not player do
+    Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+    player = Players.LocalPlayer
+end
+local camera = Workspace.CurrentCamera or Workspace:WaitForChild("Camera")
+
+local function getGuiParent()
+    if gethui then
+        local success, res = pcall(gethui)
+        if success and res then return res end
+    end
+    return player:WaitForChild("PlayerGui")
+end
+local targetGuiParent = getGuiParent()
 
 -- ====================================================================
 -- Universal Variables & States
@@ -50,6 +63,7 @@ local SPAWN_DISTANCE = 3.0
 local interactionState = "IDLE"
 local isAnimating = false
 local isUIVisible = false
+local updateToggleBtnState = function(open) end
 
 local savedZoomDistance = nil
 local wasAlreadyFirstPerson = false
@@ -102,7 +116,7 @@ local screenHudGui = Instance.new("ScreenGui")
 screenHudGui.Name = "SpatialUI_ScreenHUD"
 screenHudGui.ResetOnSpawn = false
 screenHudGui.DisplayOrder = 997
-screenHudGui.Parent = player:WaitForChild("PlayerGui")
+screenHudGui.Parent = targetGuiParent
 
 -- [ 1. Speedometer HUD ซ้ายล่าง ]
 local hudContainer = Instance.new("CanvasGroup")
@@ -429,9 +443,9 @@ surfaceGui.Adornee = uiPart
 surfaceGui.Face = Enum.NormalId.Front
 surfaceGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 surfaceGui.PixelsPerStud = 100
-surfaceGui.AlwaysOnTop = false
+surfaceGui.AlwaysOnTop = true
 surfaceGui.Enabled = false
-surfaceGui.Parent = player:WaitForChild("PlayerGui")
+surfaceGui.Parent = targetGuiParent
 
 local container = Instance.new("CanvasGroup")
 container.Name = "MainContainer"
@@ -448,7 +462,7 @@ backSurfaceGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 backSurfaceGui.PixelsPerStud = 100
 backSurfaceGui.AlwaysOnTop = false
 backSurfaceGui.Enabled = false
-backSurfaceGui.Parent = player:WaitForChild("PlayerGui")
+backSurfaceGui.Parent = targetGuiParent
 
 local backContainer = Instance.new("Frame")
 backContainer.Name = "BackContainer"
@@ -822,7 +836,7 @@ local mobileGui = Instance.new("ScreenGui")
 mobileGui.Name = "SpatialUI_MobileControls"
 mobileGui.ResetOnSpawn = false
 mobileGui.DisplayOrder = 998
-mobileGui.Parent = player:WaitForChild("PlayerGui")
+mobileGui.Parent = targetGuiParent
 
 local mobileFlyFrame = Instance.new("Frame")
 mobileFlyFrame.Name = "FlyButtons"
@@ -1101,9 +1115,9 @@ wardrobeSurfaceGui.Adornee = wardrobePart
 wardrobeSurfaceGui.Face = Enum.NormalId.Front
 wardrobeSurfaceGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 wardrobeSurfaceGui.PixelsPerStud = 100
-wardrobeSurfaceGui.AlwaysOnTop = false
+wardrobeSurfaceGui.AlwaysOnTop = true
 wardrobeSurfaceGui.Enabled = false
-wardrobeSurfaceGui.Parent = player:WaitForChild("PlayerGui")
+wardrobeSurfaceGui.Parent = targetGuiParent
 
 local wardrobeBackSurfaceGui = Instance.new("SurfaceGui")
 wardrobeBackSurfaceGui.Name = "SpatialWardrobeUI_Backplate"
@@ -1113,7 +1127,7 @@ wardrobeBackSurfaceGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 wardrobeBackSurfaceGui.PixelsPerStud = 100
 wardrobeBackSurfaceGui.AlwaysOnTop = false
 wardrobeBackSurfaceGui.Enabled = false
-wardrobeBackSurfaceGui.Parent = player:WaitForChild("PlayerGui")
+wardrobeBackSurfaceGui.Parent = targetGuiParent
 
 local wardrobeBackContainer = Instance.new("Frame")
 wardrobeBackContainer.Name = "BackContainer"
@@ -1901,6 +1915,7 @@ local function hideUIWithAnimation()
     surfaceGui.Enabled = false
     uiPart.Position = Vector3.new(0, 9999, 0)
     isUIVisible = false
+    updateToggleBtnState(false)
 
     performZoomOut()
     isAnimating = false
@@ -1911,7 +1926,7 @@ local function summonUIWithAnimation()
     isAnimating = true
 
     local char = player.Character or player.CharacterAdded:Wait()
-    local root = char:FindFirstChild("HumanoidRootPart")
+    local root = char:WaitForChild("HumanoidRootPart", 10)
     if not root then 
         isAnimating = false
         return 
@@ -1937,6 +1952,7 @@ local function summonUIWithAnimation()
     surfaceGui.Enabled = true
     backSurfaceGui.Enabled = true
     isUIVisible = true
+    updateToggleBtnState(true)
 
     local tabTitles = {
         [1] = "Player Controls",
@@ -2039,7 +2055,7 @@ summonWardrobeWithAnimation = function()
     isWardrobeAnimating = true
 
     local char = player.Character or player.CharacterAdded:Wait()
-    local root = char:FindFirstChild("HumanoidRootPart")
+    local root = char:WaitForChild("HumanoidRootPart", 10)
     if not root then
         isWardrobeAnimating = false
         return
@@ -2221,13 +2237,93 @@ wardrobeCloseBtn.Activated:Connect(function()
     hideWardrobeWithAnimation()
 end)
 
--- Secret Triple-Tap Trigger
+-- ====================================================================
+-- ScreenGui Trigger Controls (Floating Toggle Pill + Hotkeys + Triple-Tap)
+-- ====================================================================
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "SpatialUI_SecretOpener"
 screenGui.ResetOnSpawn = false
 screenGui.DisplayOrder = 999
-screenGui.Parent = player:WaitForChild("PlayerGui")
+screenGui.Parent = targetGuiParent
 
+-- 1. Floating Toggle Button (Visible Pill with Dragging support)
+local toggleMenuBtn = Instance.new("TextButton")
+toggleMenuBtn.Name = "FloatingMenuToggle"
+toggleMenuBtn.Size = UDim2.new(0, 115, 0, 36)
+toggleMenuBtn.Position = UDim2.new(0, 16, 0.45, 0)
+toggleMenuBtn.BackgroundColor3 = Color3.fromRGB(15, 20, 32)
+toggleMenuBtn.BackgroundTransparency = 0.2
+toggleMenuBtn.Text = "✦ 3D MENU"
+toggleMenuBtn.TextColor3 = Color3.fromRGB(240, 245, 255)
+toggleMenuBtn.TextSize = 13
+toggleMenuBtn.Font = Enum.Font.GothamBold
+toggleMenuBtn.AutoButtonColor = false
+toggleMenuBtn.Parent = screenGui
+
+local toggleCorner = Instance.new("UICorner")
+toggleCorner.CornerRadius = UDim.new(0, 18)
+toggleCorner.Parent = toggleMenuBtn
+
+local toggleStroke = Instance.new("UIStroke")
+toggleStroke.Thickness = 1.5
+toggleStroke.Color = Color3.fromRGB(0, 170, 255)
+toggleStroke.Transparency = 0.3
+toggleStroke.Parent = toggleMenuBtn
+
+updateToggleBtnState = function(open)
+    if not toggleMenuBtn or not toggleStroke then return end
+    if open then
+        toggleMenuBtn.Text = "✕ CLOSE 3D"
+        toggleStroke.Color = Color3.fromRGB(255, 90, 90)
+    else
+        toggleMenuBtn.Text = "✦ 3D MENU"
+        toggleStroke.Color = Color3.fromRGB(0, 170, 255)
+    end
+end
+
+-- Draggable implementation for Floating Toggle Button
+do
+    local dragging = false
+    local dragInput, dragStart, startPos
+
+    toggleMenuBtn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = toggleMenuBtn.Position
+
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    toggleMenuBtn.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            toggleMenuBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
+
+toggleMenuBtn.Activated:Connect(function()
+    if isWardrobeVisible then return end
+    if isUIVisible then
+        hideUIWithAnimation()
+    else
+        summonUIWithAnimation()
+    end
+end)
+
+-- 2. Secret Triple-Tap Trigger (on Roblox Logo)
 local secretButton = Instance.new("TextButton")
 secretButton.Name = "RobloxLogo_SecretTrigger"
 secretButton.Size = UDim2.new(0, 50, 0, 50)
@@ -2251,7 +2347,25 @@ secretButton.Activated:Connect(function()
 
     if tapCount >= 3 then
         tapCount = 0
-        summonUIWithAnimation()
+        if isWardrobeVisible then return end
+        if isUIVisible then
+            hideUIWithAnimation()
+        else
+            summonUIWithAnimation()
+        end
+    end
+end)
+
+-- 3. Keyboard Hotkeys (RightShift, Insert, K)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.RightShift or input.KeyCode == Enum.KeyCode.Insert or input.KeyCode == Enum.KeyCode.K then
+        if isWardrobeVisible then return end
+        if isUIVisible then
+            hideUIWithAnimation()
+        else
+            summonUIWithAnimation()
+        end
     end
 end)
 
@@ -2480,8 +2594,20 @@ closeBtn.MouseButton1Click:Connect(function()
     if mobileGui then mobileGui:Destroy() end
 end)
 
--- Auto Summon on Execute
+-- Auto Summon on Execute & Re-summon on Respawn
 task.spawn(function()
-    task.wait(0.15)
-    summonUIWithAnimation()
+    local char = player.Character or player.CharacterAdded:Wait()
+    char:WaitForChild("HumanoidRootPart", 10)
+    task.wait(0.4)
+    if not isUIVisible and not isWardrobeVisible then
+        summonUIWithAnimation()
+    end
+end)
+
+player.CharacterAdded:Connect(function(char)
+    char:WaitForChild("HumanoidRootPart", 10)
+    task.wait(0.5)
+    if not isUIVisible and not isWardrobeVisible then
+        summonUIWithAnimation()
+    end
 end)
