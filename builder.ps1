@@ -24,12 +24,16 @@ local screenHudGui, hudContainer, hudStroke, speedNumLabel, unitLabel, gaugeFill
 local autoJumpBtn, autoJumpStroke, btnStatusText
 local camlockBtn, camlockStroke, camlockStatusText
 local setCamlockButtonVisible, updateCamlockButtonVisual
+local setBhopScreenWidgets
 
 local uiPart, surfaceGui, backSurfaceGui, container, sidebar, mainFrame
 local tabIndicator, titleLabel, closeBtn, minBtn, trackViewport, pagesTrack, grabBarContainer
 local currentPartWidth, currentPartHeight = 4.8, 3.8
 local currentTabIndex = 1
 local typewriteTitle
+
+local playerPage, visualsPage, settingsPage
+local createToggleRow, createSliderRow, createActionButton
 
 local mobileGui, mobileFlyFrame
 local flyAttachment, flyVelocity, flyAlign, startFly, stopFly
@@ -68,6 +72,7 @@ $text = $text -replace 'local camlockStroke = Instance\.new\(', 'camlockStroke =
 $text = $text -replace 'local camlockStatusText = Instance\.new\(', 'camlockStatusText = Instance.new('
 $text = $text -replace 'local function setCamlockButtonVisible\(visible\)', 'setCamlockButtonVisible = function(visible)'
 $text = $text -replace 'local function updateCamlockButtonVisual\(isLocked, targetPlayer\)', 'updateCamlockButtonVisual = function(isLocked, targetPlayer)'
+$text = $text -replace 'local function setBhopScreenWidgets\(visible\)', 'setBhopScreenWidgets = function(visible)'
 
 # Close HUD block, Open 3D Part block
 $partHeader = @"
@@ -95,6 +100,13 @@ $text = $text -replace 'local pagesTrack = Instance\.new\(', 'pagesTrack = Insta
 $text = $text -replace 'local grabBarContainer = Instance\.new\(', 'grabBarContainer = Instance.new('
 $text = $text -replace 'local currentTabIndex = 1\n', ''
 $text = $text -replace 'local function typewriteTitle\(targetText\)', 'typewriteTitle = function(targetText)'
+
+$text = $text -replace 'local playerPage = createPageColumn\(1\)', 'playerPage = createPageColumn(1)'
+$text = $text -replace 'local visualsPage = createPageColumn\(2\)', 'visualsPage = createPageColumn(2)'
+$text = $text -replace 'local settingsPage = createPageColumn\(3\)', 'settingsPage = createPageColumn(3)'
+$text = $text -replace 'local function createToggleRow\(', 'createToggleRow = function('
+$text = $text -replace 'local function createSliderRow\(', 'createSliderRow = function('
+$text = $text -replace 'local function createActionButton\(', 'createActionButton = function('
 
 # Close 3D Part block, Open Mobile Controls block
 $mobileHeader = @"

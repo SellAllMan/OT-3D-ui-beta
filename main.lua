@@ -117,11 +117,15 @@ local screenHudGui, hudContainer, hudStroke, speedNumLabel, unitLabel, gaugeFill
 local autoJumpBtn, autoJumpStroke, btnStatusText
 local camlockBtn, camlockStroke, camlockStatusText
 local setCamlockButtonVisible, updateCamlockButtonVisual
+local setBhopScreenWidgets
 
 local uiPart, surfaceGui, backSurfaceGui, container, sidebar, mainFrame
 local tabIndicator, titleLabel, closeBtn, minBtn, trackViewport, pagesTrack, grabBarContainer
 local currentPartWidth, currentPartHeight = 4.8, 3.8
 local typewriteTitle
+
+local playerPage, visualsPage, settingsPage
+local createToggleRow, createSliderRow, createActionButton
 
 local mobileGui, mobileFlyFrame
 local flyAttachment, flyVelocity, flyAlign, startFly, stopFly
@@ -280,7 +284,7 @@ autoJumpBtn.Activated:Connect(function()
     }):Play()
 end)
 
-local function setBhopScreenWidgets(visible)
+setBhopScreenWidgets = function(visible)
     if visible then
         hudContainer.Visible = true
         autoJumpBtn.Visible = true
@@ -669,14 +673,14 @@ local function createPageColumn(order)
     return col
 end
 
-local playerPage = createPageColumn(1)
-local visualsPage = createPageColumn(2)
-local settingsPage = createPageColumn(3)
+playerPage = createPageColumn(1)
+visualsPage = createPageColumn(2)
+settingsPage = createPageColumn(3)
 
 -- ====================================================================
 -- Universal UI Component Builder
 -- ====================================================================
-local function createToggleRow(parent, name, defaultState, onToggle, order)
+createToggleRow = function(parent, name, defaultState, onToggle, order)
     local row = Instance.new("Frame")
     row.Size = UDim2.new(1, -32, 0, 48)
     row.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
@@ -722,7 +726,7 @@ local function createToggleRow(parent, name, defaultState, onToggle, order)
     return row
 end
 
-local function createSliderRow(parent, name, minVal, maxVal, defaultVal, onSliderChange, order)
+createSliderRow = function(parent, name, minVal, maxVal, defaultVal, onSliderChange, order)
     local row = Instance.new("Frame")
     row.Size = UDim2.new(1, -32, 0, 65)
     row.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
@@ -821,7 +825,7 @@ local function createSliderRow(parent, name, minVal, maxVal, defaultVal, onSlide
     return row
 end
 
-local function createActionButton(parent, name, btnText, onClick, order)
+createActionButton = function(parent, name, btnText, onClick, order)
     local row = Instance.new("Frame")
     row.Size = UDim2.new(1, -32, 0, 48)
     row.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
