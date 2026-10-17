@@ -1,4 +1,4 @@
--- LocalScript สำหรับรันผ่าน Executor / Client Environment
+﻿-- LocalScript à¸ªà¸³à¸«à¸£à¸±à¸šà¸£à¸±à¸™à¸œà¹ˆà¸²à¸™ Executor / Client Environment
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -8,7 +8,16 @@ local TeleportService = game:GetService("TeleportService")
 local Workspace = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
-local camera = Workspace.CurrentCamera
+local camera = Workspace.CurrentCamera or Workspace:WaitForChild("Camera")
+
+local function getGuiParent()
+    if gethui then
+        local success, res = pcall(gethui)
+        if success and res then return res end
+    end
+    return player:WaitForChild("PlayerGui")
+end
+local targetGuiParent = getGuiParent()
 
 -- ====================================================================
 -- Universal Variables & States
@@ -41,7 +50,7 @@ local isStrafing = false
 local camlockEnabled = false
 local isTargetLocked = false
 local lockedTargetPart = nil
-local CAMLOCK_SMOOTHNESS = 0.25 -- ความเนียนในการเล็งเป้า (0.15 - 0.4)
+local CAMLOCK_SMOOTHNESS = 0.25 -- à¸„à¸§à¸²à¸¡à¹€à¸™à¸µà¸¢à¸™à¹ƒà¸™à¸à¸²à¸£à¹€à¸¥à¹‡à¸‡à¹€à¸›à¹‰à¸² (0.15 - 0.4)
 local CAMLOCK_MAX_DIST = 250
 
 local MAX_DISTANCE = 50
@@ -50,6 +59,11 @@ local SPAWN_DISTANCE = 3.0
 local interactionState = "IDLE"
 local isAnimating = false
 local isUIVisible = false
+
+local wasMainUIVisibleBeforeWardrobe = false
+local previousCameraType = nil
+local previousCameraCFrame = nil
+local savedOriginalRootCFrame = nil
 
 local savedZoomDistance = nil
 local wasAlreadyFirstPerson = false
@@ -96,16 +110,45 @@ local function calculateCameraFrontPosition()
 end
 
 -- ====================================================================
--- ScreenGui สำหรับ HUD ต่างๆ บนหน้าจอ
+-- Universal Forward Declarations (Shared UI Handles & Cross-Module Functions)
+-- Solves Luau's 200 local registers per chunk limit
 -- ====================================================================
-local screenHudGui = Instance.new("ScreenGui")
+local screenHudGui, hudContainer, hudStroke, speedNumLabel, unitLabel, gaugeFill
+local autoJumpBtn, autoJumpStroke, btnStatusText
+local camlockBtn, camlockStroke, camlockStatusText
+local setCamlockButtonVisible, updateCamlockButtonVisual
+
+local uiPart, surfaceGui, backSurfaceGui, container, sidebar, mainFrame
+local tabIndicator, titleLabel, closeBtn, minBtn, trackViewport, pagesTrack, grabBarContainer
+local currentPartWidth, currentPartHeight = 4.8, 3.8
+local typewriteTitle
+
+local mobileGui, mobileFlyFrame
+local flyAttachment, flyVelocity, flyAlign, startFly, stopFly
+local updateESP, applyFullbright
+
+local wardrobePart, wardrobeSurfaceGui, wardrobeBackSurfaceGui, wardrobeContainer, wardrobeMainWindow, wardrobeGrabBarContainer, wardrobeCloseBtn
+local wardrobeVisualBar, visualBar, resizeHandle, line1, line2
+local profileBtn, profileStroke
+local restoreCharacterAppearance
+
+local performZoomInAndAlign, performZoomOut
+local summonUIWithAnimation, hideUIWithAnimation
+local summonWardrobeWithAnimation, hideWardrobeWithAnimation
+local updateToggleBtnState, cleanupOrbitController, setupOrbitController
+
+-- ====================================================================
+-- ScreenGui à¸ªà¸³à¸«à¸£à¸±à¸š HUD à¸•à¹ˆà¸²à¸‡à¹† à¸šà¸™à¸«à¸™à¹‰à¸²à¸ˆà¸­
+-- ====================================================================
+do
+    screenHudGui = Instance.new("ScreenGui")
 screenHudGui.Name = "SpatialUI_ScreenHUD"
 screenHudGui.ResetOnSpawn = false
 screenHudGui.DisplayOrder = 997
-screenHudGui.Parent = player:WaitForChild("PlayerGui")
+screenHudGui.Parent = targetGuiParent
 
--- [ 1. Speedometer HUD ซ้ายล่าง ]
-local hudContainer = Instance.new("CanvasGroup")
+-- [ 1. Speedometer HUD à¸‹à¹‰à¸²à¸¢à¸¥à¹ˆà¸²à¸‡ ]
+hudContainer = Instance.new("CanvasGroup")
 hudContainer.Name = "SpeedHUD"
 hudContainer.Size = UDim2.new(0, 165, 0, 62)
 hudContainer.Position = UDim2.new(0, 25, 1, 40)
@@ -117,7 +160,7 @@ hudContainer.Visible = false
 hudContainer.Parent = screenHudGui
 Instance.new("UICorner", hudContainer).CornerRadius = UDim.new(0, 12)
 
-local hudStroke = Instance.new("UIStroke", hudContainer)
+hudStroke = Instance.new("UIStroke", hudContainer)
 hudStroke.Color = Color3.fromRGB(50, 140, 255)
 hudStroke.Thickness = 1.4
 hudStroke.Transparency = 0.4
@@ -140,7 +183,7 @@ hudTitle.TextSize = 10
 hudTitle.TextXAlignment = Enum.TextXAlignment.Left
 hudTitle.Parent = hudContainer
 
-local speedNumLabel = Instance.new("TextLabel")
+speedNumLabel = Instance.new("TextLabel")
 speedNumLabel.Size = UDim2.new(0, 75, 0, 28)
 speedNumLabel.Position = UDim2.new(0, 12, 0, 20)
 speedNumLabel.BackgroundTransparency = 1
@@ -151,7 +194,7 @@ speedNumLabel.TextSize = 22
 speedNumLabel.TextXAlignment = Enum.TextXAlignment.Left
 speedNumLabel.Parent = hudContainer
 
-local unitLabel = Instance.new("TextLabel")
+unitLabel = Instance.new("TextLabel")
 unitLabel.Size = UDim2.new(0, 50, 0, 16)
 unitLabel.Position = UDim2.new(0, 76, 0, 28)
 unitLabel.BackgroundTransparency = 1
@@ -170,15 +213,15 @@ gaugeBackground.BorderSizePixel = 0
 gaugeBackground.Parent = hudContainer
 Instance.new("UICorner", gaugeBackground).CornerRadius = UDim.new(1, 0)
 
-local gaugeFill = Instance.new("Frame")
+gaugeFill = Instance.new("Frame")
 gaugeFill.Size = UDim2.new(0.1, 0, 1, 0)
 gaugeFill.BackgroundColor3 = Color3.fromRGB(50, 160, 255)
 gaugeFill.BorderSizePixel = 0
 gaugeFill.Parent = gaugeBackground
 Instance.new("UICorner", gaugeFill).CornerRadius = UDim.new(1, 0)
 
--- [ 2. ปุ่ม Auto Jump ฝั่งขวาของหน้าจอ ]
-local autoJumpBtn = Instance.new("TextButton")
+-- [ 2. à¸›à¸¸à¹ˆà¸¡ Auto Jump à¸à¸±à¹ˆà¸‡à¸‚à¸§à¸²à¸‚à¸­à¸‡à¸«à¸™à¹‰à¸²à¸ˆà¸­ ]
+autoJumpBtn = Instance.new("TextButton")
 autoJumpBtn.Name = "AutoJumpToggleBtn"
 autoJumpBtn.Size = UDim2.new(0, 56, 0, 56)
 autoJumpBtn.Position = UDim2.new(1, 30, 0.65, 0)
@@ -190,7 +233,7 @@ autoJumpBtn.Visible = false
 autoJumpBtn.Parent = screenHudGui
 Instance.new("UICorner", autoJumpBtn).CornerRadius = UDim.new(0, 16)
 
-local autoJumpStroke = Instance.new("UIStroke", autoJumpBtn)
+autoJumpStroke = Instance.new("UIStroke", autoJumpBtn)
 autoJumpStroke.Color = Color3.fromRGB(60, 60, 80)
 autoJumpStroke.Thickness = 1.8
 
@@ -204,7 +247,7 @@ btnTextTop.Font = Enum.Font.GothamBold
 btnTextTop.TextSize = 11
 btnTextTop.Parent = autoJumpBtn
 
-local btnStatusText = Instance.new("TextLabel")
+btnStatusText = Instance.new("TextLabel")
 btnStatusText.Size = UDim2.new(1, 0, 0, 18)
 btnStatusText.Position = UDim2.new(0, 0, 0, 26)
 btnStatusText.BackgroundTransparency = 1
@@ -273,8 +316,8 @@ local function setBhopScreenWidgets(visible)
     end
 end
 
--- [ 3. ปุ่ม Camlock ติดหน้าจอฝั่งขวา ]
-local camlockBtn = Instance.new("TextButton")
+-- [ 3. à¸›à¸¸à¹ˆà¸¡ Camlock à¸•à¸´à¸”à¸«à¸™à¹‰à¸²à¸ˆà¸­à¸à¸±à¹ˆà¸‡à¸‚à¸§à¸² ]
+camlockBtn = Instance.new("TextButton")
 camlockBtn.Name = "CamlockTriggerBtn"
 camlockBtn.Size = UDim2.new(0, 56, 0, 56)
 camlockBtn.Position = UDim2.new(1, 30, 0.52, 0)
@@ -286,7 +329,7 @@ camlockBtn.Visible = false
 camlockBtn.Parent = screenHudGui
 Instance.new("UICorner", camlockBtn).CornerRadius = UDim.new(0, 16)
 
-local camlockStroke = Instance.new("UIStroke", camlockBtn)
+camlockStroke = Instance.new("UIStroke", camlockBtn)
 camlockStroke.Color = Color3.fromRGB(60, 60, 80)
 camlockStroke.Thickness = 1.8
 
@@ -298,7 +341,7 @@ camlockIcon.Image = "rbxassetid://10734898355"
 camlockIcon.ImageColor3 = Color3.fromRGB(180, 180, 200)
 camlockIcon.Parent = camlockBtn
 
-local camlockStatusText = Instance.new("TextLabel")
+camlockStatusText = Instance.new("TextLabel")
 camlockStatusText.Size = UDim2.new(1, 0, 0, 16)
 camlockStatusText.Position = UDim2.new(0, 0, 0, 32)
 camlockStatusText.BackgroundTransparency = 1
@@ -308,7 +351,7 @@ camlockStatusText.Font = Enum.Font.GothamBold
 camlockStatusText.TextSize = 11
 camlockStatusText.Parent = camlockBtn
 
-local function updateCamlockButtonVisual(isLocked, targetPlayer)
+updateCamlockButtonVisual = function(isLocked, targetPlayer)
     if isLocked then
         camlockStatusText.Text = targetPlayer and (targetPlayer.DisplayName:sub(1, 6) .. "..") or "LOCKED"
         camlockStatusText.TextColor3 = Color3.fromRGB(255, 60, 60)
@@ -385,7 +428,7 @@ camlockBtn.Activated:Connect(function()
     }):Play()
 end)
 
-local function setCamlockButtonVisible(visible)
+setCamlockButtonVisible = function(visible)
     if visible then
         camlockBtn.Visible = true
         TweenService:Create(camlockBtn, TweenInfo.new(0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
@@ -407,13 +450,13 @@ local function setCamlockButtonVisible(visible)
     end
 end
 
+end -- [End HUD Block]
+
 -- ====================================================================
 -- 3D Part & SurfaceGui Setup
 -- ====================================================================
-local currentPartWidth = 4.8
-local currentPartHeight = 3.8
-
-local uiPart = Instance.new("Part")
+do
+    uiPart = Instance.new("Part")
 uiPart.Name = "Spatial_UI_Anchor"
 uiPart.Size = Vector3.new(currentPartWidth, currentPartHeight, 0.05)
 uiPart.Anchored = true
@@ -423,24 +466,24 @@ uiPart.CastShadow = false
 uiPart.Position = Vector3.new(0, 9999, 0)
 uiPart.Parent = Workspace
 
-local surfaceGui = Instance.new("SurfaceGui")
+surfaceGui = Instance.new("SurfaceGui")
 surfaceGui.Name = "SpatialUI"
 surfaceGui.Adornee = uiPart
 surfaceGui.Face = Enum.NormalId.Front
 surfaceGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 surfaceGui.PixelsPerStud = 100
-surfaceGui.AlwaysOnTop = false
+surfaceGui.AlwaysOnTop = true
 surfaceGui.Enabled = false
-surfaceGui.Parent = player:WaitForChild("PlayerGui")
+surfaceGui.Parent = targetGuiParent
 
-local container = Instance.new("CanvasGroup")
+container = Instance.new("CanvasGroup")
 container.Name = "MainContainer"
 container.Size = UDim2.new(1, 0, 1, 0)
 container.BackgroundTransparency = 1
 container.GroupTransparency = 1
 container.Parent = surfaceGui
 
-local backSurfaceGui = Instance.new("SurfaceGui")
+backSurfaceGui = Instance.new("SurfaceGui")
 backSurfaceGui.Name = "SpatialUI_Backplate"
 backSurfaceGui.Adornee = uiPart
 backSurfaceGui.Face = Enum.NormalId.Back
@@ -448,7 +491,7 @@ backSurfaceGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 backSurfaceGui.PixelsPerStud = 100
 backSurfaceGui.AlwaysOnTop = false
 backSurfaceGui.Enabled = false
-backSurfaceGui.Parent = player:WaitForChild("PlayerGui")
+backSurfaceGui.Parent = targetGuiParent
 
 local backContainer = Instance.new("Frame")
 backContainer.Name = "BackContainer"
@@ -482,8 +525,8 @@ local backMainStroke = Instance.new("UIStroke", backMainWindow)
 backMainStroke.Color = Color3.fromRGB(65, 65, 80)
 backMainStroke.Thickness = 1.5
 
--- Sidebar ด้านหน้า
-local sidebar = Instance.new("Frame")
+-- Sidebar à¸”à¹‰à¸²à¸™à¸«à¸™à¹‰à¸²
+sidebar = Instance.new("Frame")
 sidebar.Name = "Sidebar"
 sidebar.Size = UDim2.new(0, 52, 1, -55)
 sidebar.Position = UDim2.new(0, 0, 0, 0)
@@ -496,7 +539,7 @@ local sidebarStroke = Instance.new("UIStroke", sidebar)
 sidebarStroke.Color = Color3.fromRGB(55, 55, 70)
 sidebarStroke.Thickness = 1.5
 
-local tabIndicator = Instance.new("Frame")
+tabIndicator = Instance.new("Frame")
 tabIndicator.Name = "TabIndicator"
 tabIndicator.AnchorPoint = Vector2.new(0.5, 0.5)
 tabIndicator.Size = UDim2.new(0, 36, 0, 36)
@@ -507,8 +550,8 @@ tabIndicator.ZIndex = 1
 tabIndicator.Parent = sidebar
 Instance.new("UICorner", tabIndicator).CornerRadius = UDim.new(0, 8)
 
--- MainWindow ด้านหน้า
-local mainFrame = Instance.new("Frame")
+-- MainWindow à¸”à¹‰à¸²à¸™à¸«à¸™à¹‰à¸²
+mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainWindow"
 mainFrame.Size = UDim2.new(1, -60, 1, -55)
 mainFrame.Position = UDim2.new(0, 60, 0, 0)
@@ -522,7 +565,7 @@ local stroke = Instance.new("UIStroke", mainFrame)
 stroke.Color = Color3.fromRGB(65, 65, 80)
 stroke.Thickness = 1.5
 
-local titleLabel = Instance.new("TextLabel")
+titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, -90, 0, 35)
 titleLabel.Position = UDim2.new(0, 16, 0, 8)
 titleLabel.BackgroundTransparency = 1
@@ -536,7 +579,7 @@ titleLabel.Parent = mainFrame
 local titleThread = nil
 local scrambleChars = {"-", "_", "/", "\\", ">", "<", "*", "!", "#", "$"}
 
-local function typewriteTitle(targetText)
+typewriteTitle = function(targetText)
     if titleThread then task.cancel(titleThread) end
     titleThread = task.spawn(function()
         local current = ""
@@ -553,7 +596,7 @@ local function typewriteTitle(targetText)
     end)
 end
 
-local closeBtn = Instance.new("TextButton")
+closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0, 28, 0, 28)
 closeBtn.Position = UDim2.new(1, -38, 0, 8)
 closeBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
@@ -564,7 +607,7 @@ closeBtn.TextSize = 14
 closeBtn.Parent = mainFrame
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
 
-local minBtn = Instance.new("TextButton")
+minBtn = Instance.new("TextButton")
 minBtn.Size = UDim2.new(0, 28, 0, 28)
 minBtn.Position = UDim2.new(1, -72, 0, 8)
 minBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
@@ -576,7 +619,7 @@ minBtn.Parent = mainFrame
 Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 6)
 
 -- Pages Container (Continuous Track)
-local trackViewport = Instance.new("Frame")
+trackViewport = Instance.new("Frame")
 trackViewport.Name = "TrackViewport"
 trackViewport.Size = UDim2.new(1, 0, 1, -45)
 trackViewport.Position = UDim2.new(0, 0, 0, 45)
@@ -584,7 +627,7 @@ trackViewport.BackgroundTransparency = 1
 trackViewport.ClipsDescendants = true
 trackViewport.Parent = mainFrame
 
-local pagesTrack = Instance.new("ScrollingFrame")
+pagesTrack = Instance.new("ScrollingFrame")
 pagesTrack.Name = "PagesTrack"
 pagesTrack.Size = UDim2.new(1, 0, 1, 0)
 pagesTrack.Position = UDim2.new(0, 0, 0, 0)
@@ -815,16 +858,19 @@ local function createActionButton(parent, name, btnText, onClick, order)
     return row
 end
 
+end -- [End 3D UI Block]
+
 -- ====================================================================
--- ScreenGui สำหรับปุ่มควบคุมบินบนมือถือ
+-- ScreenGui à¸ªà¸³à¸«à¸£à¸±à¸šà¸›à¸¸à¹ˆà¸¡à¸„à¸§à¸šà¸„à¸¸à¸¡à¸šà¸´à¸™à¸šà¸™à¸¡à¸·à¸­à¸–à¸·à¸­
 -- ====================================================================
-local mobileGui = Instance.new("ScreenGui")
+do
+    mobileGui = Instance.new("ScreenGui")
 mobileGui.Name = "SpatialUI_MobileControls"
 mobileGui.ResetOnSpawn = false
 mobileGui.DisplayOrder = 998
-mobileGui.Parent = player:WaitForChild("PlayerGui")
+mobileGui.Parent = targetGuiParent
 
-local mobileFlyFrame = Instance.new("Frame")
+mobileFlyFrame = Instance.new("Frame")
 mobileFlyFrame.Name = "FlyButtons"
 mobileFlyFrame.Size = UDim2.new(0, 55, 0, 120)
 mobileFlyFrame.Position = UDim2.new(1, -75, 0.5, -60)
@@ -852,8 +898,8 @@ local function createMobileFlyBtn(name, text, posY)
     return btn
 end
 
-local btnFlyUp = createMobileFlyBtn("FlyUp", "▲", 0)
-local btnFlyDown = createMobileFlyBtn("FlyDown", "▼", 60)
+local btnFlyUp = createMobileFlyBtn("FlyUp", "â–²", 0)
+local btnFlyDown = createMobileFlyBtn("FlyDown", "â–¼", 60)
 
 btnFlyUp.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -881,11 +927,13 @@ btnFlyDown.InputEnded:Connect(function(input)
     end
 end)
 
+end -- [End Mobile Controls Block]
+
 -- ====================================================================
 -- Universal Features Logic
 -- ====================================================================
-local flyAttachment, flyVelocity, flyAlign
-local function startFly()
+do
+    startFly = function()
     local char = player.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -910,7 +958,7 @@ local function startFly()
     mobileFlyFrame.Visible = true
 end
 
-local function stopFly()
+stopFly = function()
     local char = player.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if hum then hum.PlatformStand = false end
@@ -924,7 +972,7 @@ local function stopFly()
 end
 
 local espHighlights = {}
-local function updateESP()
+updateESP = function()
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= player and p.Character then
             if espEnabled then
@@ -965,7 +1013,7 @@ local defaultAmbient = Lighting.Ambient
 local defaultBrightness = Lighting.Brightness
 local defaultClockTime = Lighting.ClockTime
 
-local function applyFullbright(enable)
+applyFullbright = function(enable)
     if enable then
         Lighting.Ambient = Color3.fromRGB(255, 255, 255)
         Lighting.Brightness = 2
@@ -1078,14 +1126,13 @@ createActionButton(settingsPage, "Server Rejoin", "Rejoin", function()
     TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, player)
 end, 2)
 
--- ====================================================================
--- Wardrobe & Character Look 3D UI Setup
--- ====================================================================
-local isWardrobeVisible = false
-local isWardrobeAnimating = false
-local summonWardrobeWithAnimation, hideWardrobeWithAnimation
+end -- [End Universal Features Block]
 
-local wardrobePart = Instance.new("Part")
+-- ====================================================================
+-- Wardrobe & Character Look 3D UI Setup & Drag Handlers
+-- ====================================================================
+do
+    wardrobePart = Instance.new("Part")
 wardrobePart.Name = "Spatial_Wardrobe_Anchor"
 wardrobePart.Size = Vector3.new(4.2, 3.6, 0.05)
 wardrobePart.Anchored = true
@@ -1095,17 +1142,17 @@ wardrobePart.CastShadow = false
 wardrobePart.Position = Vector3.new(0, 9999, 0)
 wardrobePart.Parent = Workspace
 
-local wardrobeSurfaceGui = Instance.new("SurfaceGui")
+wardrobeSurfaceGui = Instance.new("SurfaceGui")
 wardrobeSurfaceGui.Name = "SpatialWardrobeUI"
 wardrobeSurfaceGui.Adornee = wardrobePart
 wardrobeSurfaceGui.Face = Enum.NormalId.Front
 wardrobeSurfaceGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 wardrobeSurfaceGui.PixelsPerStud = 100
-wardrobeSurfaceGui.AlwaysOnTop = false
+wardrobeSurfaceGui.AlwaysOnTop = true
 wardrobeSurfaceGui.Enabled = false
-wardrobeSurfaceGui.Parent = player:WaitForChild("PlayerGui")
+wardrobeSurfaceGui.Parent = targetGuiParent
 
-local wardrobeBackSurfaceGui = Instance.new("SurfaceGui")
+wardrobeBackSurfaceGui = Instance.new("SurfaceGui")
 wardrobeBackSurfaceGui.Name = "SpatialWardrobeUI_Backplate"
 wardrobeBackSurfaceGui.Adornee = wardrobePart
 wardrobeBackSurfaceGui.Face = Enum.NormalId.Back
@@ -1113,7 +1160,7 @@ wardrobeBackSurfaceGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 wardrobeBackSurfaceGui.PixelsPerStud = 100
 wardrobeBackSurfaceGui.AlwaysOnTop = false
 wardrobeBackSurfaceGui.Enabled = false
-wardrobeBackSurfaceGui.Parent = player:WaitForChild("PlayerGui")
+wardrobeBackSurfaceGui.Parent = targetGuiParent
 
 local wardrobeBackContainer = Instance.new("Frame")
 wardrobeBackContainer.Name = "BackContainer"
@@ -1133,14 +1180,14 @@ local wardrobeBackStroke = Instance.new("UIStroke", wardrobeBackMainWindow)
 wardrobeBackStroke.Color = Color3.fromRGB(65, 65, 80)
 wardrobeBackStroke.Thickness = 1.5
 
-local wardrobeContainer = Instance.new("CanvasGroup")
+wardrobeContainer = Instance.new("CanvasGroup")
 wardrobeContainer.Name = "WardrobeContainer"
 wardrobeContainer.Size = UDim2.new(1, 0, 1, 0)
 wardrobeContainer.BackgroundTransparency = 1
 wardrobeContainer.GroupTransparency = 1
 wardrobeContainer.Parent = wardrobeSurfaceGui
 
-local wardrobeMainWindow = Instance.new("Frame")
+wardrobeMainWindow = Instance.new("Frame")
 wardrobeMainWindow.Name = "MainWindow"
 wardrobeMainWindow.Size = UDim2.new(1, 0, 1, -55)
 wardrobeMainWindow.Position = UDim2.new(0, 0, 0, 0)
@@ -1176,7 +1223,7 @@ wardrobeSubTitle.Font = Enum.Font.GothamBold
 wardrobeSubTitle.TextXAlignment = Enum.TextXAlignment.Left
 wardrobeSubTitle.Parent = wardrobeMainWindow
 
-local wardrobeCloseBtn = Instance.new("TextButton")
+wardrobeCloseBtn = Instance.new("TextButton")
 wardrobeCloseBtn.Size = UDim2.new(0, 28, 0, 28)
 wardrobeCloseBtn.Position = UDim2.new(1, -38, 0, 8)
 wardrobeCloseBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
@@ -1209,14 +1256,14 @@ wardrobePadding.PaddingTop = UDim.new(0, 8)
 wardrobePadding.PaddingBottom = UDim.new(0, 14)
 wardrobePadding.Parent = wardrobePage
 
-local wardrobeGrabBarContainer = Instance.new("Frame")
+wardrobeGrabBarContainer = Instance.new("Frame")
 wardrobeGrabBarContainer.Name = "WardrobeGrabBarArea"
 wardrobeGrabBarContainer.Size = UDim2.new(1, 0, 0, 50)
 wardrobeGrabBarContainer.Position = UDim2.new(0, 0, 1, -15)
 wardrobeGrabBarContainer.BackgroundTransparency = 1
 wardrobeGrabBarContainer.Parent = wardrobeContainer
 
-local wardrobeVisualBar = Instance.new("TextButton")
+wardrobeVisualBar = Instance.new("TextButton")
 wardrobeVisualBar.Name = "WardrobeVisualBar"
 wardrobeVisualBar.Size = UDim2.new(0.65, 0, 0, 14)
 wardrobeVisualBar.Position = UDim2.new(0.175, 0, 0.5, -7)
@@ -1258,7 +1305,7 @@ local function cacheCharacterAppearance()
     end
 end
 
-local function restoreCharacterAppearance()
+restoreCharacterAppearance = function()
     local char = player.Character
     if char then
         for part, col in pairs(originalColors) do
@@ -1467,7 +1514,6 @@ end, 8)
 -- ====================================================================
 -- Continuous Track Tab Animation Logic
 -- ====================================================================
-local currentTabIndex = 1
 local allTabIcons = {}
 
 local function switchTab(newIndex, targetCenterY, icon, tabName)
@@ -1553,8 +1599,8 @@ createTabButton("rbxassetid://10723424505", 1, "Player Controls")
 createTabButton("rbxassetid://10723415205", 2, "Visual Mod Menu")
 createTabButton("rbxassetid://10734950309", 3, "Settings & Utility")
 
--- ปุ่มรูปเพลเยอร์ที่ล่างสุดของแถบ Sidebar (Avatar Headshot)
-local profileBtn = Instance.new("TextButton")
+-- à¸›à¸¸à¹ˆà¸¡à¸£à¸¹à¸›à¹€à¸žà¸¥à¹€à¸¢à¸­à¸£à¹Œà¸—à¸µà¹ˆà¸¥à¹ˆà¸²à¸‡à¸ªà¸¸à¸”à¸‚à¸­à¸‡à¹à¸–à¸š Sidebar (Avatar Headshot)
+profileBtn = Instance.new("TextButton")
 profileBtn.Name = "PlayerAvatarBtn"
 profileBtn.AnchorPoint = Vector2.new(0.5, 1)
 profileBtn.Size = UDim2.new(0, 36, 0, 36)
@@ -1566,7 +1612,7 @@ profileBtn.ZIndex = 4
 profileBtn.Parent = sidebar
 Instance.new("UICorner", profileBtn).CornerRadius = UDim.new(1, 0)
 
-local profileStroke = Instance.new("UIStroke", profileBtn)
+profileStroke = Instance.new("UIStroke", profileBtn)
 profileStroke.Color = Color3.fromRGB(65, 65, 85)
 profileStroke.Thickness = 1.6
 
@@ -1607,8 +1653,8 @@ profileBtn.Activated:Connect(function()
     end
 end)
 
--- Resize Corner ด้านหน้า
-local resizeHandle = Instance.new("TextButton")
+-- Resize Corner à¸”à¹‰à¸²à¸™à¸«à¸™à¹‰à¸²
+resizeHandle = Instance.new("TextButton")
 resizeHandle.Name = "ResizeHandle"
 resizeHandle.Size = UDim2.new(0, 44, 0, 44)
 resizeHandle.Position = UDim2.new(1, -44, 1, -44)
@@ -1632,15 +1678,15 @@ end
 local line1 = createHandleLine(16, 18, 24)
 local line2 = createHandleLine(9, 25, 31)
 
--- Grab Bar Area ด้านล่าง
-local grabBarContainer = Instance.new("Frame")
+-- Grab Bar Area à¸”à¹‰à¸²à¸™à¸¥à¹ˆà¸²à¸‡
+grabBarContainer = Instance.new("Frame")
 grabBarContainer.Name = "GrabBarArea"
 grabBarContainer.Size = UDim2.new(1, 0, 0, 50)
 grabBarContainer.Position = UDim2.new(0, 0, 1, -15)
 grabBarContainer.BackgroundTransparency = 1
 grabBarContainer.Parent = container
 
-local visualBar = Instance.new("TextButton")
+visualBar = Instance.new("TextButton")
 visualBar.Name = "VisualBar"
 visualBar.Size = UDim2.new(0.65, 0, 0, 14)
 visualBar.Position = UDim2.new(0.175, 0, 0.5, -7)
@@ -1791,11 +1837,13 @@ local function endDragOrResize(input)
 end
 
 UserInputService.InputEnded:Connect(endDragOrResize)
+end -- [End Wardrobe & Drag Handlers Block]
 
 -- ====================================================================
 -- Camera Alignment Zoom
 -- ====================================================================
-local function performZoomInAndAlign()
+do
+    performZoomInAndAlign = function()
     local isFirstPerson = isCurrentlyFirstPerson()
     if isFirstPerson then
         wasAlreadyFirstPerson = true
@@ -1847,7 +1895,7 @@ local function performZoomInAndAlign()
     zoomValue:Destroy()
 end
 
-local function performZoomOut()
+performZoomOut = function()
     if wasAlreadyFirstPerson or not savedZoomDistance then return end
 
     local DURATION = 0.4
@@ -1871,11 +1919,12 @@ local function performZoomOut()
     player.CameraMinZoomDistance = 0.5
     player.CameraMaxZoomDistance = 128
 end
+end -- [End Camera Alignment Zoom Block]
 
 -- ====================================================================
 -- Hide & Summon Animations
 -- ====================================================================
-local function hideUIWithAnimation()
+hideUIWithAnimation = function()
     if not isUIVisible or isAnimating then return end
     isAnimating = true
 
@@ -1901,17 +1950,18 @@ local function hideUIWithAnimation()
     surfaceGui.Enabled = false
     uiPart.Position = Vector3.new(0, 9999, 0)
     isUIVisible = false
+    updateToggleBtnState(false)
 
     performZoomOut()
     isAnimating = false
 end
 
-local function summonUIWithAnimation()
+summonUIWithAnimation = function()
     if isUIVisible or isAnimating then return end
     isAnimating = true
 
     local char = player.Character or player.CharacterAdded:Wait()
-    local root = char:FindFirstChild("HumanoidRootPart")
+    local root = char:WaitForChild("HumanoidRootPart", 10)
     if not root then 
         isAnimating = false
         return 
@@ -1937,6 +1987,7 @@ local function summonUIWithAnimation()
     surfaceGui.Enabled = true
     backSurfaceGui.Enabled = true
     isUIVisible = true
+    updateToggleBtnState(true)
 
     local tabTitles = {
         [1] = "Player Controls",
@@ -1985,154 +2036,153 @@ minBtn.Activated:Connect(function()
 end)
 
 -- ====================================================================
--- Wardrobe Cinematic Cutscene & Camera Logic
+-- Wardrobe Cinematic Cutscene & Custom Scriptable Camera System
 -- ====================================================================
-local savedOriginalRootCFrame = nil
-local savedOriginalCamCFrame = nil
-local isWardrobeCutscenePlaying = false
+local wasMainUIVisibleBeforeWardrobe = false
+local previousCameraType = nil
+local previousCameraCFrame = nil
 
-local function playEnterWardrobeCutscene()
-    local root = getRootPart()
-    local hum = getHumanoid()
-    if not root or not hum then return end
+local orbitYaw = 0
+local orbitPitch = 0
+local orbitRadius = 6.8
+local orbitLateralOffset = 1.35
+local isOrbitDragging = false
+local lastDragInputPos = nil
 
-    isWardrobeCutscenePlaying = true
-    savedOriginalRootCFrame = root.CFrame
-    savedOriginalCamCFrame = camera.CFrame
-
-    -- ยึดตำแหน่งตัวละครชั่วคราวเพื่อความนิ่งระหว่างเล่นคัตซีน
-    root.AssemblyLinearVelocity = Vector3.zero
-    root.AssemblyAngularVelocity = Vector3.zero
-    root.Anchored = true
-
-    -- [ Phase 1: คัตซีนกล้องซูมถอยหลังออกมาก่อน (Cinematic Zoom Out) ]
-    local zoomOutDistance = 8.5
-    local targetCamPos = root.Position - (root.CFrame.LookVector * zoomOutDistance) + Vector3.new(0, 1.2, 0)
-    local targetLookAt = root.Position + Vector3.new(0, 1.0, 0)
-    local zoomOutCFrame = CFrame.lookAt(targetCamPos, targetLookAt)
-
-    local startCamCFrame = camera.CFrame
-    local zoomDuration = 0.42
-    local startTick = tick()
-
-    while (tick() - startTick < zoomDuration) do
-        local alpha = math.clamp((tick() - startTick) / zoomDuration, 0, 1)
-        local smoothAlpha = TweenService:GetValue(alpha, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-        camera.CFrame = startCamCFrame:Lerp(zoomOutCFrame, smoothAlpha)
-        RunService.RenderStepped:Wait()
+cleanupOrbitController = function()
+    if orbitConn then
+        orbitConn:Disconnect()
+        orbitConn = nil
     end
-    camera.CFrame = zoomOutCFrame
-
-    task.wait(0.04)
-
-    -- [ Phase 2: ค่อยๆ หันตัวละครกลับมาประจันหน้ากับกล้อง (Character Turn Around) ]
-    local startRootCFrame = root.CFrame
-    local lookAtCameraPos = Vector3.new(camera.CFrame.Position.X, root.Position.Y, camera.CFrame.Position.Z)
-    local targetTurnCFrame = CFrame.lookAt(root.Position, lookAtCameraPos)
-
-    local turnDuration = 0.38
-    startTick = tick()
-
-    while (tick() - startTick < turnDuration) do
-        local alpha = math.clamp((tick() - startTick) / turnDuration, 0, 1)
-        local smoothAlpha = TweenService:GetValue(alpha, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-        root.CFrame = startRootCFrame:Lerp(targetTurnCFrame, smoothAlpha)
-        RunService.RenderStepped:Wait()
+    if orbitInputBeganConn then
+        orbitInputBeganConn:Disconnect()
+        orbitInputBeganConn = nil
     end
-    root.CFrame = targetTurnCFrame
-
-    -- [ Phase 3: ปลดล็อคระยะซูมให้ผู้เล่นหมุนดูรอบตัวละคร 360 องศาได้อิสระ ]
-    player.CameraMinZoomDistance = 5.0
-    player.CameraMaxZoomDistance = 12.0
-
-    if not freezeCharacter then
-        root.Anchored = false
+    if orbitInputEndedConn then
+        orbitInputEndedConn:Disconnect()
+        orbitInputEndedConn = nil
     end
-
-    isWardrobeCutscenePlaying = false
+    if orbitInputChangedConn then
+        orbitInputChangedConn:Disconnect()
+        orbitInputChangedConn = nil
+    end
+    isOrbitDragging = false
+    lastDragInputPos = nil
 end
 
-local function playExitWardrobeCutscene()
-    local root = getRootPart()
-    if not root then return end
+setupOrbitController = function(charFocus, baseYaw)
+    cleanupOrbitController()
+    orbitYaw = baseYaw
+    orbitPitch = 4
+    orbitRadius = 6.8
+    orbitLateralOffset = 1.35
 
-    isWardrobeCutscenePlaying = true
-    root.AssemblyLinearVelocity = Vector3.zero
-    root.AssemblyAngularVelocity = Vector3.zero
-    root.Anchored = true
+    orbitInputBeganConn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch then
+            isOrbitDragging = true
+            lastDragInputPos = input.Position
+        end
+    end)
 
-    -- [ Phase 1: หันตัวละครและกล้องกลับไปหาทิศทางของ UI หลัก ]
-    local targetRootRot = savedOriginalRootCFrame and (savedOriginalRootCFrame.Rotation + root.Position) or root.CFrame
-    local startRootCFrame = root.CFrame
+    orbitInputEndedConn = UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch then
+            isOrbitDragging = false
+            lastDragInputPos = nil
+        end
+    end)
 
-    local targetCamPos = root.Position - (targetRootRot.LookVector * 8.5) + Vector3.new(0, 1.2, 0)
-    local targetCamLookAt = root.Position + (targetRootRot.LookVector * 6.0) + Vector3.new(0, 1.0, 0)
-    local targetCamCFrame = CFrame.lookAt(targetCamPos, targetCamLookAt)
+    orbitInputChangedConn = UserInputService.InputChanged:Connect(function(input)
+        if isOrbitDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            if lastDragInputPos then
+                local delta = input.Position - lastDragInputPos
+                orbitYaw = orbitYaw - (delta.X * 0.007)
+                orbitPitch = math.clamp(orbitPitch - (delta.Y * 0.4), -55, 65)
+            end
+            lastDragInputPos = input.Position
+        elseif input.UserInputType == Enum.UserInputType.MouseWheel then
+            orbitRadius = math.clamp(orbitRadius - (input.Position.Z * 0.8), 3.0, 11.5)
+        end
+    end)
 
-    local startCamCFrame = camera.CFrame
-    local turnBackDuration = 0.40
-    local startTick = tick()
-
-    while (tick() - startTick < turnBackDuration) do
-        local alpha = math.clamp((tick() - startTick) / turnBackDuration, 0, 1)
-        local smoothAlpha = TweenService:GetValue(alpha, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-        root.CFrame = startRootCFrame:Lerp(targetRootRot, smoothAlpha)
-        camera.CFrame = startCamCFrame:Lerp(targetCamCFrame, smoothAlpha)
-        RunService.RenderStepped:Wait()
-    end
-    root.CFrame = targetRootRot
-    camera.CFrame = targetCamCFrame
-
-    -- [ Phase 2: คัตซีนซูมกล้องกลับเข้าไปหา UI หลัก (Zoom In to Main UI) ]
-    if isUIVisible then
-        performZoomInAndAlign()
-    else
-        local zoomDuration = 0.35
-        local zoomValue = Instance.new("NumberValue")
-        zoomValue.Value = 8.5
-
-        local zoomTween = TweenService:Create(zoomValue, TweenInfo.new(zoomDuration, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-            Value = 0.5
-        })
-
-        local connection = zoomValue.Changed:Connect(function(val)
-            player.CameraMinZoomDistance = val
-            player.CameraMaxZoomDistance = val
-        end)
-
-        zoomTween:Play()
-        zoomTween.Completed:Wait()
-        connection:Disconnect()
-        zoomValue:Destroy()
-
-        player.CameraMinZoomDistance = 0.5
-        player.CameraMaxZoomDistance = 128
-    end
-
-    if not freezeCharacter then
-        root.Anchored = false
-    end
-
-    isWardrobeCutscenePlaying = false
+    orbitConn = RunService.RenderStepped:Connect(function(dt)
+        if not isWardrobeMode or camera.CameraType ~= Enum.CameraType.Scriptable then return end
+        local rotCF = CFrame.Angles(0, orbitYaw, 0) * CFrame.Angles(math.rad(orbitPitch), 0, 0)
+        local camPos = charFocus + rotCF:VectorToWorldSpace(Vector3.new(orbitLateralOffset, 0, orbitRadius))
+        local lookTarget = charFocus - rotCF:VectorToWorldSpace(Vector3.new(orbitLateralOffset * 0.35, 0, 0))
+        camera.CFrame = camera.CFrame:Lerp(CFrame.lookAt(camPos, lookTarget), 0.25)
+    end)
 end
 
 summonWardrobeWithAnimation = function()
-    if isWardrobeVisible or isWardrobeAnimating or isWardrobeCutscenePlaying then return end
+    if isWardrobeVisible or isWardrobeAnimating then return end
     isWardrobeAnimating = true
+    isWardrobeMode = true
 
     local char = player.Character or player.CharacterAdded:Wait()
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then
+    local root = char:WaitForChild("HumanoidRootPart", 10)
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not root or not hum then
         isWardrobeAnimating = false
+        isWardrobeMode = false
         return
     end
 
-    -- เล่นคัตซีนซูมออกก่อน แล้วค่อยหันตัวละครมาหาหน้ากล้อง
-    playEnterWardrobeCutscene()
+    -- 1. à¸‹à¹ˆà¸­à¸™ UI à¸«à¸¥à¸±à¸à¹„à¸›à¹€à¸¥à¸¢à¸ˆà¸™à¸à¸§à¹ˆà¸²à¸ˆà¸°à¸à¸”à¸›à¸´à¸”à¸•à¸¹à¹‰à¹à¸•à¹ˆà¸‡à¸•à¸±à¸§
+    wasMainUIVisibleBeforeWardrobe = isUIVisible
+    if isUIVisible then
+        surfaceGui.Enabled = false
+        backSurfaceGui.Enabled = false
+        uiPart.Position = Vector3.new(0, 9999, 0)
+        isUIVisible = false
+        if updateToggleBtnState then updateToggleBtnState(false) end
+    end
 
-    -- พิกัดหน้าต่าง 3D UI ใหม่อยู่ด้านซ้ายของหน้าจอ (ขวามือตัวละคร) ไม่บังตัวละคร
-    local wardrobeSpawnPos = root.Position - (camera.CFrame.RightVector * 3.4) + (camera.CFrame.LookVector * 1.5) + Vector3.new(0, 0.4, 0)
-    local finalCFrame = getFacingCFrame(wardrobeSpawnPos)
+    -- 2. à¸¢à¸¶à¸”à¸•à¸³à¹à¸«à¸™à¹ˆà¸‡à¸•à¸±à¸§à¸¥à¸°à¸„à¸£à¸™à¸´à¹ˆà¸‡à¹† à¹€à¸žà¸·à¹ˆà¸­à¹„à¸¡à¹ˆà¹ƒà¸«à¹‰à¸¥à¸·à¹ˆà¸™à¹„à¸–à¸¥
+    root.AssemblyLinearVelocity = Vector3.zero
+    root.AssemblyAngularVelocity = Vector3.zero
+    root.Anchored = true
+
+    -- 3. à¸ªà¸¥à¸±à¸šà¸¡à¸²à¹ƒà¸Šà¹‰à¸à¸¥à¹‰à¸­à¸‡ Scriptable (à¸—à¸³à¹€à¸­à¸‡ 100% à¸ªà¸¡à¸¹à¸— à¹„à¸£à¹‰à¸à¸²à¸£à¸ªà¸±à¹ˆà¸™/à¸à¸£à¸°à¸•à¸¸à¸à¸ˆà¸²à¸ CameraModule à¸‚à¸­à¸‡à¹€à¸à¸¡)
+    previousCameraType = camera.CameraType
+    previousCameraCFrame = camera.CFrame
+    camera.CameraType = Enum.CameraType.Scriptable
+
+    -- 4. à¸„à¸³à¸™à¸§à¸“à¸•à¸³à¹à¸«à¸™à¹ˆà¸‡à¸à¸¥à¹‰à¸­à¸‡à¸—à¸µà¹ˆà¸«à¸±à¸™à¸›à¸£à¸°à¸ˆà¸±à¸™à¸«à¸™à¹‰à¸²à¸à¸±à¸šà¸•à¸±à¸§à¸¥à¸°à¸„à¸£ (à¸¡à¸­à¸‡à¸«à¸™à¹‰à¸²à¸•à¸±à¸§à¸¥à¸°à¸„à¸£à¹€à¸£à¸²)
+    local charPos = root.Position
+    local charLook = root.CFrame.LookVector
+    local charRight = root.CFrame.RightVector
+    local charFocus = charPos + Vector3.new(0, 0.6, 0)
+
+    local camDist = 6.8
+    local camHeight = 0.45
+    local camLateral = 1.35 -- à¹€à¸šà¸µà¹ˆà¸¢à¸‡à¸à¸¥à¹‰à¸­à¸‡à¹„à¸›à¸—à¸²à¸‡à¸‚à¸§à¸²à¸‚à¸­à¸‡à¸•à¸±à¸§à¸¥à¸°à¸„à¸£à¹€à¸¥à¹‡à¸à¸™à¹‰à¸­à¸¢ à¹€à¸žà¸·à¹ˆà¸­à¹ƒà¸«à¹‰à¸•à¸±à¸§à¸¥à¸°à¸„à¸£à¸­à¸¢à¸¹à¹ˆà¸‚à¸§à¸²à¸ˆà¸­ à¹à¸¥à¸°à¸¡à¸µà¸—à¸µà¹ˆà¸§à¹ˆà¸²à¸‡à¸‹à¹‰à¸²à¸¢à¸ˆà¸­à¸ªà¸³à¸«à¸£à¸±à¸š UI
+
+    local goalCamPos = charFocus + (charLook * camDist) + (charRight * camLateral) + Vector3.new(0, camHeight, 0)
+    local goalLookAt = charFocus - (charRight * 0.35)
+    local goalCamCFrame = CFrame.lookAt(goalCamPos, goalLookAt)
+
+    -- 5. à¸„à¸±à¸•à¸‹à¸µà¸™à¸à¸¥à¹‰à¸­à¸‡à¹€à¸¥à¸·à¹ˆà¸­à¸™à¹€à¸‚à¹‰à¸²à¸¡à¸²à¸›à¸£à¸°à¸ˆà¸±à¸™à¸«à¸™à¹‰à¸²à¸•à¸±à¸§à¸¥à¸°à¸„à¸£à¸­à¸¢à¹ˆà¸²à¸‡à¸ªà¸¡à¸¹à¸— (Cinematic Camera Glide)
+    local startCamCFrame = camera.CFrame
+    local enterDuration = 0.52
+    local startTick = tick()
+
+    while (tick() - startTick < enterDuration) do
+        local alpha = math.clamp((tick() - startTick) / enterDuration, 0, 1)
+        local smoothAlpha = TweenService:GetValue(alpha, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out)
+        camera.CFrame = startCamCFrame:Lerp(goalCamCFrame, smoothAlpha)
+        RunService.RenderStepped:Wait()
+    end
+    camera.CFrame = goalCamCFrame
+
+    -- 6. à¸§à¸²à¸‡à¸•à¸³à¹à¸«à¸™à¹ˆà¸‡à¸«à¸™à¹‰à¸² 3D UI à¸•à¸¹à¹‰à¹à¸•à¹ˆà¸‡à¸•à¸±à¸§à¸—à¸²à¸‡à¸à¸±à¹ˆà¸‡à¸‹à¹‰à¸²à¸¢à¸‚à¸­à¸‡à¸ˆà¸­ à¹ƒà¸«à¹‰à¸«à¸±à¸™à¸•à¸£à¸‡à¹€à¸‚à¹‰à¸²à¸«à¸²à¸à¸¥à¹‰à¸­à¸‡à¸­à¸¢à¹ˆà¸²à¸‡à¸ªà¸¡à¸šà¸¹à¸£à¸“à¹Œà¹à¸šà¸š
+    local curCamCF = camera.CFrame
+    local uiDist = 4.6
+    local uiLeft = 2.25
+    local uiElev = 0.05
+
+    local wardrobeSpawnPos = curCamCF.Position + (curCamCF.LookVector * uiDist) - (curCamCF.RightVector * uiLeft) + (curCamCF.UpVector * uiElev)
+    local finalCFrame = CFrame.lookAt(wardrobeSpawnPos, wardrobeSpawnPos + curCamCF.LookVector)
 
     wardrobePart.Size = Vector3.new(0.2, 0.2, 0.05)
     wardrobePart.CFrame = finalCFrame * CFrame.new(0, -0.6, -0.4)
@@ -2141,6 +2191,7 @@ summonWardrobeWithAnimation = function()
     wardrobeMainWindow.Position = UDim2.new(0.42, 0, 0.45, 0)
     wardrobeGrabBarContainer.Position = UDim2.new(0, 0, 1, -15)
 
+    wardrobeSurfaceGui.AlwaysOnTop = true
     wardrobeSurfaceGui.Enabled = true
     wardrobeBackSurfaceGui.Enabled = true
     isWardrobeVisible = true
@@ -2175,11 +2226,18 @@ summonWardrobeWithAnimation = function()
             isWardrobeAnimating = false
         end)
     end)
+
+    -- 7. à¹€à¸£à¸´à¹ˆà¸¡à¸£à¸°à¸šà¸šà¸à¸¥à¹‰à¸­à¸‡à¸•à¸£à¸§à¸ˆà¸”à¸¹à¸•à¸±à¸§à¸¥à¸°à¸„à¸£ 360 à¸­à¸‡à¸¨à¸² (à¸¥à¸²à¸à¹€à¸¡à¸²à¸ªà¹Œà¸«à¸¡à¸¸à¸™à¸£à¸­à¸šà¸•à¸±à¸§ + à¸‹à¸¹à¸¡à¹€à¸‚à¹‰à¸²à¸­à¸­à¸à¹„à¸”à¹‰)
+    local baseYaw = math.atan2(charLook.X, charLook.Z)
+    setupOrbitController(charFocus, baseYaw)
 end
 
 hideWardrobeWithAnimation = function()
-    if not isWardrobeVisible or isWardrobeAnimating or isWardrobeCutscenePlaying then return end
+    if not isWardrobeVisible or isWardrobeAnimating then return end
     isWardrobeAnimating = true
+
+    -- à¸›à¸´à¸”à¸•à¸±à¸§à¸„à¸§à¸šà¸„à¸¸à¸¡à¸«à¸¡à¸¸à¸™à¸à¸¥à¹‰à¸­à¸‡
+    cleanupOrbitController()
 
     wardrobeBackSurfaceGui.Enabled = false
     profileStroke.Color = Color3.fromRGB(65, 65, 85)
@@ -2200,8 +2258,36 @@ hideWardrobeWithAnimation = function()
     wardrobePart.Position = Vector3.new(0, 9999, 0)
     isWardrobeVisible = false
 
-    -- เล่นคัตซีนหันตัวละครกลับไปหา UI หลัก และซูมกล้องกลับเข้าไป
-    playExitWardrobeCutscene()
+    -- à¸„à¸±à¸•à¸‹à¸µà¸™à¸à¸¥à¹‰à¸­à¸‡à¹€à¸¥à¸·à¹ˆà¸­à¸™à¸à¸¥à¸±à¸šà¹„à¸›à¸¢à¸±à¸‡à¸¡à¸¸à¸¡à¸¡à¸­à¸‡à¹€à¸”à¸´à¸¡à¸‚à¸­à¸‡à¸œà¸¹à¹‰à¹€à¸¥à¹ˆà¸™
+    local root = getRootPart()
+    local returnDuration = 0.44
+    local startCam = camera.CFrame
+    local goalCam = previousCameraCFrame or (root and CFrame.lookAt(root.Position - (root.CFrame.LookVector * 6.5) + Vector3.new(0, 1.8, 0), root.Position + Vector3.new(0, 0.8, 0)) or startCam)
+
+    local startTick = tick()
+    while (tick() - startTick < returnDuration) do
+        local alpha = math.clamp((tick() - startTick) / returnDuration, 0, 1)
+        local smoothAlpha = TweenService:GetValue(alpha, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+        camera.CFrame = startCam:Lerp(goalCam, smoothAlpha)
+        RunService.RenderStepped:Wait()
+    end
+    camera.CFrame = goalCam
+
+    -- à¸„à¸·à¸™à¸„à¹ˆà¸²à¸›à¸£à¸°à¹€à¸ à¸—à¸à¸¥à¹‰à¸­à¸‡à¹€à¸”à¸´à¸¡ à¹à¸¥à¸°à¸›à¸¥à¸”à¸¥à¹‡à¸­à¸„à¸•à¸±à¸§à¸¥à¸°à¸„à¸£
+    camera.CameraType = previousCameraType or Enum.CameraType.Custom
+    player.CameraMinZoomDistance = 0.5
+    player.CameraMaxZoomDistance = 128
+    if not freezeCharacter and root then
+        root.Anchored = false
+    end
+    isWardrobeMode = false
+
+    -- à¸à¸¹à¹‰à¸„à¸·à¸™ UI à¸«à¸¥à¸±à¸à¸à¸¥à¸±à¸šà¸¡à¸²à¸–à¹‰à¸²à¸à¹ˆà¸­à¸™à¸«à¸™à¹‰à¸²à¸™à¸µà¹‰à¹€à¸›à¸´à¸”à¸­à¸¢à¸¹à¹ˆ
+    if wasMainUIVisibleBeforeWardrobe then
+        wasMainUIVisibleBeforeWardrobe = false
+        summonUIWithAnimation()
+    end
+
     isWardrobeAnimating = false
 end
 
@@ -2209,13 +2295,93 @@ wardrobeCloseBtn.Activated:Connect(function()
     hideWardrobeWithAnimation()
 end)
 
--- Secret Triple-Tap Trigger
+-- ====================================================================
+-- ScreenGui Trigger Controls (Floating Toggle Pill + Hotkeys + Triple-Tap)
+-- ====================================================================
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "SpatialUI_SecretOpener"
 screenGui.ResetOnSpawn = false
 screenGui.DisplayOrder = 999
-screenGui.Parent = player:WaitForChild("PlayerGui")
+screenGui.Parent = targetGuiParent
 
+-- 1. Floating Toggle Button (Visible Pill with Dragging support)
+local toggleMenuBtn = Instance.new("TextButton")
+toggleMenuBtn.Name = "FloatingMenuToggle"
+toggleMenuBtn.Size = UDim2.new(0, 115, 0, 36)
+toggleMenuBtn.Position = UDim2.new(0, 16, 0.45, 0)
+toggleMenuBtn.BackgroundColor3 = Color3.fromRGB(15, 20, 32)
+toggleMenuBtn.BackgroundTransparency = 0.2
+toggleMenuBtn.Text = "âœ¦ 3D MENU"
+toggleMenuBtn.TextColor3 = Color3.fromRGB(240, 245, 255)
+toggleMenuBtn.TextSize = 13
+toggleMenuBtn.Font = Enum.Font.GothamBold
+toggleMenuBtn.AutoButtonColor = false
+toggleMenuBtn.Parent = screenGui
+
+local toggleCorner = Instance.new("UICorner")
+toggleCorner.CornerRadius = UDim.new(0, 18)
+toggleCorner.Parent = toggleMenuBtn
+
+local toggleStroke = Instance.new("UIStroke")
+toggleStroke.Thickness = 1.5
+toggleStroke.Color = Color3.fromRGB(0, 170, 255)
+toggleStroke.Transparency = 0.3
+toggleStroke.Parent = toggleMenuBtn
+
+updateToggleBtnState = function(open)
+    if not toggleMenuBtn or not toggleStroke then return end
+    if open then
+        toggleMenuBtn.Text = "âœ• CLOSE 3D"
+        toggleStroke.Color = Color3.fromRGB(255, 90, 90)
+    else
+        toggleMenuBtn.Text = "âœ¦ 3D MENU"
+        toggleStroke.Color = Color3.fromRGB(0, 170, 255)
+    end
+end
+
+-- Draggable implementation for Floating Toggle Button
+do
+    local dragging = false
+    local dragInput, dragStart, startPos
+
+    toggleMenuBtn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = toggleMenuBtn.Position
+
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    toggleMenuBtn.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            toggleMenuBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
+
+toggleMenuBtn.Activated:Connect(function()
+    if isWardrobeVisible then return end
+    if isUIVisible then
+        hideUIWithAnimation()
+    else
+        summonUIWithAnimation()
+    end
+end)
+
+-- 2. Secret Triple-Tap Trigger (on Roblox Logo)
 local secretButton = Instance.new("TextButton")
 secretButton.Name = "RobloxLogo_SecretTrigger"
 secretButton.Size = UDim2.new(0, 50, 0, 50)
@@ -2239,7 +2405,25 @@ secretButton.Activated:Connect(function()
 
     if tapCount >= 3 then
         tapCount = 0
-        summonUIWithAnimation()
+        if isWardrobeVisible then return end
+        if isUIVisible then
+            hideUIWithAnimation()
+        else
+            summonUIWithAnimation()
+        end
+    end
+end)
+
+-- 3. Keyboard Hotkeys (RightShift, Insert, K)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.RightShift or input.KeyCode == Enum.KeyCode.Insert or input.KeyCode == Enum.KeyCode.K then
+        if isWardrobeVisible then return end
+        if isUIVisible then
+            hideUIWithAnimation()
+        else
+            summonUIWithAnimation()
+        end
     end
 end)
 
@@ -2402,10 +2586,11 @@ local loopConnection = RunService.RenderStepped:Connect(function(dt)
 end)
 
 -- ====================================================================
--- 2. Post-Camera Camlock Execution (ตัดระบบออโต้โหมดและหมุนกล้องจริง 100%)
+-- 2. Post-Camera Camlock Execution (à¸•à¸±à¸”à¸£à¸°à¸šà¸šà¸­à¸­à¹‚à¸•à¹‰à¹‚à¸«à¸¡à¸”à¹à¸¥à¸°à¸«à¸¡à¸¸à¸™à¸à¸¥à¹‰à¸­à¸‡à¸ˆà¸£à¸´à¸‡ 100%)
 -- ====================================================================
 local CAMLOCK_BIND_NAME = "SpatialUI_CamlockPostRender"
 RunService:BindToRenderStep(CAMLOCK_BIND_NAME, Enum.RenderPriority.Camera.Value + 1, function()
+    if isWardrobeMode or isWardrobeVisible then return end
     if camlockEnabled and isTargetLocked and lockedTargetPart then
         local targetChar = lockedTargetPart.Parent
         local targetHum = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
@@ -2415,10 +2600,10 @@ RunService:BindToRenderStep(CAMLOCK_BIND_NAME, Enum.RenderPriority.Camera.Value 
             local currentCamPos = camera.CFrame.Position
             local targetPos = lockedTargetPart.Position
             
-            -- สร้างมุมมองตรงไปยังเป้าหมาย ณ พิกัดปัจจุบันของกล้องปกติ
+            -- à¸ªà¸£à¹‰à¸²à¸‡à¸¡à¸¸à¸¡à¸¡à¸­à¸‡à¸•à¸£à¸‡à¹„à¸›à¸¢à¸±à¸‡à¹€à¸›à¹‰à¸²à¸«à¸¡à¸²à¸¢ à¸“ à¸žà¸´à¸à¸±à¸”à¸›à¸±à¸ˆà¸ˆà¸¸à¸šà¸±à¸™à¸‚à¸­à¸‡à¸à¸¥à¹‰à¸­à¸‡à¸›à¸à¸•à¸´
             local targetLookCFrame = CFrame.lookAt(currentCamPos, targetPos)
             
-            -- เขียนทับมุมมองหลังจากที่ CameraModule คำนวณเสร็จสิ้น
+            -- à¹€à¸‚à¸µà¸¢à¸™à¸—à¸±à¸šà¸¡à¸¸à¸¡à¸¡à¸­à¸‡à¸«à¸¥à¸±à¸‡à¸ˆà¸²à¸à¸—à¸µà¹ˆ CameraModule à¸„à¸³à¸™à¸§à¸“à¹€à¸ªà¸£à¹‡à¸ˆà¸ªà¸´à¹‰à¸™
             camera.CFrame = camera.CFrame:Lerp(targetLookCFrame, CAMLOCK_SMOOTHNESS)
         else
             isTargetLocked = false
@@ -2437,17 +2622,24 @@ closeBtn.MouseButton1Click:Connect(function()
     updateESP()
     applyFullbright(false)
 
+    cleanupOrbitController()
+
     if isWardrobeVisible then
         hideWardrobeWithAnimation()
     end
     restoreCharacterAppearance()
 
+    camera.CameraType = Enum.CameraType.Custom
     player.CameraMinZoomDistance = 0.5
     player.CameraMaxZoomDistance = 128
     local hum = getHumanoid()
     if hum then
         hum.WalkSpeed = defaultSpeed
         hum.JumpPower = defaultJump
+    end
+    local root = getRootPart()
+    if root then
+        root.Anchored = false
     end
 
     if uiPart then uiPart:Destroy() end
@@ -2461,8 +2653,20 @@ closeBtn.MouseButton1Click:Connect(function()
     if mobileGui then mobileGui:Destroy() end
 end)
 
--- Auto Summon on Execute
+-- Auto Summon on Execute & Re-summon on Respawn
 task.spawn(function()
-    task.wait(0.15)
-    summonUIWithAnimation()
+    local char = player.Character or player.CharacterAdded:Wait()
+    char:WaitForChild("HumanoidRootPart", 10)
+    task.wait(0.4)
+    if not isUIVisible and not isWardrobeVisible then
+        summonUIWithAnimation()
+    end
+end)
+
+player.CharacterAdded:Connect(function(char)
+    char:WaitForChild("HumanoidRootPart", 10)
+    task.wait(0.5)
+    if not isUIVisible and not isWardrobeVisible then
+        summonUIWithAnimation()
+    end
 end)
