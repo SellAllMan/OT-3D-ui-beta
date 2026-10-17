@@ -10,14 +10,7 @@ local Workspace = game:GetService("Workspace")
 local player = Players.LocalPlayer
 local camera = Workspace.CurrentCamera or Workspace:WaitForChild("Camera")
 
-local function getGuiParent()
-    if gethui then
-        local success, res = pcall(gethui)
-        if success and res then return res end
-    end
-    return player:WaitForChild("PlayerGui")
-end
-local targetGuiParent = getGuiParent()
+local targetGuiParent = player:WaitForChild("PlayerGui")
 
 -- ====================================================================
 -- Universal Variables & States
@@ -477,7 +470,8 @@ surfaceGui.Adornee = uiPart
 surfaceGui.Face = Enum.NormalId.Front
 surfaceGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 surfaceGui.PixelsPerStud = 100
-surfaceGui.AlwaysOnTop = true
+surfaceGui.AlwaysOnTop = false
+surfaceGui.ResetOnSpawn = false
 surfaceGui.Enabled = false
 surfaceGui.Parent = targetGuiParent
 
@@ -495,6 +489,7 @@ backSurfaceGui.Face = Enum.NormalId.Back
 backSurfaceGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 backSurfaceGui.PixelsPerStud = 100
 backSurfaceGui.AlwaysOnTop = false
+backSurfaceGui.ResetOnSpawn = false
 backSurfaceGui.Enabled = false
 backSurfaceGui.Parent = targetGuiParent
 
@@ -1152,7 +1147,8 @@ wardrobeSurfaceGui.Adornee = wardrobePart
 wardrobeSurfaceGui.Face = Enum.NormalId.Front
 wardrobeSurfaceGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 wardrobeSurfaceGui.PixelsPerStud = 100
-wardrobeSurfaceGui.AlwaysOnTop = true
+wardrobeSurfaceGui.AlwaysOnTop = false
+wardrobeSurfaceGui.ResetOnSpawn = false
 wardrobeSurfaceGui.Enabled = false
 wardrobeSurfaceGui.Parent = targetGuiParent
 
@@ -1163,6 +1159,7 @@ wardrobeBackSurfaceGui.Face = Enum.NormalId.Back
 wardrobeBackSurfaceGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 wardrobeBackSurfaceGui.PixelsPerStud = 100
 wardrobeBackSurfaceGui.AlwaysOnTop = false
+wardrobeBackSurfaceGui.ResetOnSpawn = false
 wardrobeBackSurfaceGui.Enabled = false
 wardrobeBackSurfaceGui.Parent = targetGuiParent
 
