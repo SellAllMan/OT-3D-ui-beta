@@ -1956,22 +1956,12 @@ hideUIWithAnimation = function()
     isUIVisible = false
     updateToggleBtnState(false)
 
-    performZoomOut()
     isAnimating = false
 end
 
 summonUIWithAnimation = function()
     if isUIVisible or isAnimating then return end
     isAnimating = true
-
-    local char = player.Character or player.CharacterAdded:Wait()
-    local root = char:WaitForChild("HumanoidRootPart", 10)
-    if not root then 
-        isAnimating = false
-        return 
-    end
-
-    performZoomInAndAlign()
 
     local finalSpawnPos = calculateCameraFrontPosition()
     local finalCFrame = getFacingCFrame(finalSpawnPos)
@@ -2316,8 +2306,8 @@ end
 -- 2. Secret Triple-Tap Trigger (on Roblox Logo)
 local secretButton = Instance.new("TextButton")
 secretButton.Name = "RobloxLogo_SecretTrigger"
-secretButton.Size = UDim2.new(0, 50, 0, 50)
-secretButton.Position = UDim2.new(0, 5, 0, 5)
+secretButton.Size = UDim2.new(0, 75, 0, 60)
+secretButton.Position = UDim2.new(0, 0, 0, 0)
 secretButton.BackgroundTransparency = 1
 secretButton.Text = ""
 secretButton.Parent = screenGui
@@ -2326,7 +2316,7 @@ local tapCount = 0
 local lastTapTime = 0
 local TRIPLE_TAP_DELAY = 1.0
 
-secretButton.Activated:Connect(function()
+local function registerOpenerTap()
     local now = tick()
     if now - lastTapTime > TRIPLE_TAP_DELAY then
         tapCount = 1
@@ -2344,7 +2334,10 @@ secretButton.Activated:Connect(function()
             summonUIWithAnimation()
         end
     end
-end)
+end
+
+secretButton.Activated:Connect(registerOpenerTap)
+secretButton.MouseButton1Down:Connect(registerOpenerTap)
 
 -- 3. Keyboard Hotkeys (RightShift, Insert, K)
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
@@ -2587,9 +2580,14 @@ end)
 
 -- Auto Summon on Execute & Re-summon on Respawn
 task.spawn(function()
-    local char = player.Character or player.CharacterAdded:Wait()
-    char:WaitForChild("HumanoidRootPart", 10)
-    task.wait(0.4)
+    local char = player.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then
+        char = player.Character or player.CharacterAdded:Wait()
+        if not char:FindFirstChild("HumanoidRootPart") then
+            char:WaitForChild("HumanoidRootPart", 5)
+        end
+    end
+    task.wait(0.15)
     if not isUIVisible and not isWardrobeVisible then
         summonUIWithAnimation()
     end
@@ -2597,7 +2595,7 @@ end)
 
 player.CharacterAdded:Connect(function(char)
     char:WaitForChild("HumanoidRootPart", 10)
-    task.wait(0.5)
+    task.wait(0.3)
     if not isUIVisible and not isWardrobeVisible then
         summonUIWithAnimation()
     end
