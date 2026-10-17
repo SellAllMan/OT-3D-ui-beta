@@ -1,4 +1,4 @@
-﻿-- LocalScript à¸ªà¸³à¸«à¸£à¸±à¸šà¸£à¸±à¸™à¸œà¹ˆà¸²à¸™ Executor / Client Environment
+-- LocalScript for Executor / Client Environment
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -50,7 +50,7 @@ local isStrafing = false
 local camlockEnabled = false
 local isTargetLocked = false
 local lockedTargetPart = nil
-local CAMLOCK_SMOOTHNESS = 0.25 -- à¸„à¸§à¸²à¸¡à¹€à¸™à¸µà¸¢à¸™à¹ƒà¸™à¸à¸²à¸£à¹€à¸¥à¹‡à¸‡à¹€à¸›à¹‰à¸² (0.15 - 0.4)
+local CAMLOCK_SMOOTHNESS = 0.25 -- Camlock aim smoothness (0.15 - 0.4)
 local CAMLOCK_MAX_DIST = 250
 
 local MAX_DISTANCE = 50
@@ -122,6 +122,7 @@ local setBhopScreenWidgets
 local uiPart, surfaceGui, backSurfaceGui, container, sidebar, mainFrame
 local tabIndicator, titleLabel, closeBtn, minBtn, trackViewport, pagesTrack, grabBarContainer
 local currentPartWidth, currentPartHeight = 4.8, 3.8
+local currentTabIndex = 1
 local typewriteTitle
 
 local playerPage, visualsPage, settingsPage
@@ -142,7 +143,7 @@ local summonWardrobeWithAnimation, hideWardrobeWithAnimation
 local updateToggleBtnState, cleanupOrbitController, setupOrbitController
 
 -- ====================================================================
--- ScreenGui à¸ªà¸³à¸«à¸£à¸±à¸š HUD à¸•à¹ˆà¸²à¸‡à¹† à¸šà¸™à¸«à¸™à¹‰à¸²à¸ˆà¸­
+-- ScreenGui for On-Screen HUD Widgets
 -- ====================================================================
 do
     screenHudGui = Instance.new("ScreenGui")
@@ -151,7 +152,7 @@ screenHudGui.ResetOnSpawn = false
 screenHudGui.DisplayOrder = 997
 screenHudGui.Parent = targetGuiParent
 
--- [ 1. Speedometer HUD à¸‹à¹‰à¸²à¸¢à¸¥à¹ˆà¸²à¸‡ ]
+-- [ 1. Speedometer HUD (Bottom Left) ]
 hudContainer = Instance.new("CanvasGroup")
 hudContainer.Name = "SpeedHUD"
 hudContainer.Size = UDim2.new(0, 165, 0, 62)
@@ -224,7 +225,7 @@ gaugeFill.BorderSizePixel = 0
 gaugeFill.Parent = gaugeBackground
 Instance.new("UICorner", gaugeFill).CornerRadius = UDim.new(1, 0)
 
--- [ 2. à¸›à¸¸à¹ˆà¸¡ Auto Jump à¸à¸±à¹ˆà¸‡à¸‚à¸§à¸²à¸‚à¸­à¸‡à¸«à¸™à¹‰à¸²à¸ˆà¸­ ]
+-- [ 2. Auto Jump Button (Right Side) ]
 autoJumpBtn = Instance.new("TextButton")
 autoJumpBtn.Name = "AutoJumpToggleBtn"
 autoJumpBtn.Size = UDim2.new(0, 56, 0, 56)
@@ -320,7 +321,7 @@ setBhopScreenWidgets = function(visible)
     end
 end
 
--- [ 3. à¸›à¸¸à¹ˆà¸¡ Camlock à¸•à¸´à¸”à¸«à¸™à¹‰à¸²à¸ˆà¸­à¸à¸±à¹ˆà¸‡à¸‚à¸§à¸² ]
+-- [ 3. Camlock Button (Right Side) ]
 camlockBtn = Instance.new("TextButton")
 camlockBtn.Name = "CamlockTriggerBtn"
 camlockBtn.Size = UDim2.new(0, 56, 0, 56)
@@ -529,7 +530,7 @@ local backMainStroke = Instance.new("UIStroke", backMainWindow)
 backMainStroke.Color = Color3.fromRGB(65, 65, 80)
 backMainStroke.Thickness = 1.5
 
--- Sidebar à¸”à¹‰à¸²à¸™à¸«à¸™à¹‰à¸²
+-- Front Sidebar
 sidebar = Instance.new("Frame")
 sidebar.Name = "Sidebar"
 sidebar.Size = UDim2.new(0, 52, 1, -55)
@@ -554,7 +555,7 @@ tabIndicator.ZIndex = 1
 tabIndicator.Parent = sidebar
 Instance.new("UICorner", tabIndicator).CornerRadius = UDim.new(0, 8)
 
--- MainWindow à¸”à¹‰à¸²à¸™à¸«à¸™à¹‰à¸²
+-- Front MainWindow
 mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainWindow"
 mainFrame.Size = UDim2.new(1, -60, 1, -55)
@@ -865,11 +866,10 @@ end
 end -- [End 3D UI Block]
 
 -- ====================================================================
--- ScreenGui à¸ªà¸³à¸«à¸£à¸±à¸šà¸›à¸¸à¹ˆà¸¡à¸„à¸§à¸šà¸„à¸¸à¸¡à¸šà¸´à¸™à¸šà¸™à¸¡à¸·à¸­à¸–à¸·à¸­
+-- ScreenGui for Mobile Flight Controls
 -- ====================================================================
 do
     mobileGui = Instance.new("ScreenGui")
-mobileGui.Name = "SpatialUI_MobileControls"
 mobileGui.ResetOnSpawn = false
 mobileGui.DisplayOrder = 998
 mobileGui.Parent = targetGuiParent
@@ -1259,7 +1259,7 @@ local wardrobePadding = Instance.new("UIPadding")
 wardrobePadding.PaddingTop = UDim.new(0, 8)
 wardrobePadding.PaddingBottom = UDim.new(0, 14)
 wardrobePadding.Parent = wardrobePage
-
+-- Grab Bar Area (Bottom)
 wardrobeGrabBarContainer = Instance.new("Frame")
 wardrobeGrabBarContainer.Name = "WardrobeGrabBarArea"
 wardrobeGrabBarContainer.Size = UDim2.new(1, 0, 0, 50)
@@ -1603,7 +1603,7 @@ createTabButton("rbxassetid://10723424505", 1, "Player Controls")
 createTabButton("rbxassetid://10723415205", 2, "Visual Mod Menu")
 createTabButton("rbxassetid://10734950309", 3, "Settings & Utility")
 
--- à¸›à¸¸à¹ˆà¸¡à¸£à¸¹à¸›à¹€à¸žà¸¥à¹€à¸¢à¸­à¸£à¹Œà¸—à¸µà¹ˆà¸¥à¹ˆà¸²à¸‡à¸ªà¸¸à¸”à¸‚à¸­à¸‡à¹à¸–à¸š Sidebar (Avatar Headshot)
+-- Player Profile Button (Avatar Headshot in Sidebar)
 profileBtn = Instance.new("TextButton")
 profileBtn.Name = "PlayerAvatarBtn"
 profileBtn.AnchorPoint = Vector2.new(0.5, 1)
@@ -1657,7 +1657,7 @@ profileBtn.Activated:Connect(function()
     end
 end)
 
--- Resize Corner à¸”à¹‰à¸²à¸™à¸«à¸™à¹‰à¸²
+-- Resize Corner Handle
 resizeHandle = Instance.new("TextButton")
 resizeHandle.Name = "ResizeHandle"
 resizeHandle.Size = UDim2.new(0, 44, 0, 44)
@@ -1682,7 +1682,7 @@ end
 local line1 = createHandleLine(16, 18, 24)
 local line2 = createHandleLine(9, 25, 31)
 
--- Grab Bar Area à¸”à¹‰à¸²à¸™à¸¥à¹ˆà¸²à¸‡
+-- Grab Bar Area (Bottom)
 grabBarContainer = Instance.new("Frame")
 grabBarContainer.Name = "GrabBarArea"
 grabBarContainer.Size = UDim2.new(1, 0, 0, 50)
@@ -1750,7 +1750,7 @@ local function resizeUIByDelta(deltaX, deltaY)
     currentPartWidth = math.clamp(currentPartWidth + (deltaX * studsPerPixel), 3.4, 9.5)
     currentPartHeight = math.clamp(currentPartHeight + (deltaY * studsPerPixel), 2.2, 8.0)
     uiPart.Size = Vector3.new(currentPartWidth, currentPartHeight, 0.05)
-    pagesTrack.CanvasPosition = Vector2.new((currentTabIndex - 1) * trackViewport.AbsoluteSize.X, 0)
+    pagesTrack.CanvasPosition = Vector2.new(((currentTabIndex or 1) - 1) * (trackViewport and trackViewport.AbsoluteSize.X or 0), 0)
 end
 
 visualBar.InputBegan:Connect(function(input)
@@ -1985,7 +1985,7 @@ summonUIWithAnimation = function()
     mainFrame.Position = UDim2.new(0.42, 0, 0.45, 0)
     grabBarContainer.Position = UDim2.new(0, 0, 1, -15)
 
-    local targetCanvasX = (currentTabIndex - 1) * trackViewport.AbsoluteSize.X
+    local targetCanvasX = ((currentTabIndex or 1) - 1) * (trackViewport and trackViewport.AbsoluteSize.X or 0)
     pagesTrack.CanvasPosition = Vector2.new(targetCanvasX, 0)
 
     surfaceGui.Enabled = true
@@ -2132,7 +2132,7 @@ summonWardrobeWithAnimation = function()
         return
     end
 
-    -- 1. à¸‹à¹ˆà¸­à¸™ UI à¸«à¸¥à¸±à¸à¹„à¸›à¹€à¸¥à¸¢à¸ˆà¸™à¸à¸§à¹ˆà¸²à¸ˆà¸°à¸à¸”à¸›à¸´à¸”à¸•à¸¹à¹‰à¹à¸•à¹ˆà¸‡à¸•à¸±à¸§
+    -- 1. Hide main UI completely while wardrobe is open
     wasMainUIVisibleBeforeWardrobe = isUIVisible
     if isUIVisible then
         surfaceGui.Enabled = false
@@ -2142,17 +2142,17 @@ summonWardrobeWithAnimation = function()
         if updateToggleBtnState then updateToggleBtnState(false) end
     end
 
-    -- 2. à¸¢à¸¶à¸”à¸•à¸³à¹à¸«à¸™à¹ˆà¸‡à¸•à¸±à¸§à¸¥à¸°à¸„à¸£à¸™à¸´à¹ˆà¸‡à¹† à¹€à¸žà¸·à¹ˆà¸­à¹„à¸¡à¹ˆà¹ƒà¸«à¹‰à¸¥à¸·à¹ˆà¸™à¹„à¸–à¸¥
+    -- 2. Anchor character position to prevent sliding
     root.AssemblyLinearVelocity = Vector3.zero
     root.AssemblyAngularVelocity = Vector3.zero
     root.Anchored = true
 
-    -- 3. à¸ªà¸¥à¸±à¸šà¸¡à¸²à¹ƒà¸Šà¹‰à¸à¸¥à¹‰à¸­à¸‡ Scriptable (à¸—à¸³à¹€à¸­à¸‡ 100% à¸ªà¸¡à¸¹à¸— à¹„à¸£à¹‰à¸à¸²à¸£à¸ªà¸±à¹ˆà¸™/à¸à¸£à¸°à¸•à¸¸à¸à¸ˆà¸²à¸ CameraModule à¸‚à¸­à¸‡à¹€à¸à¸¡)
+    -- 3. Switch camera to Scriptable (Smooth 100% custom camera without CameraModule interference)
     previousCameraType = camera.CameraType
     previousCameraCFrame = camera.CFrame
     camera.CameraType = Enum.CameraType.Scriptable
 
-    -- 4. à¸„à¸³à¸™à¸§à¸“à¸•à¸³à¹à¸«à¸™à¹ˆà¸‡à¸à¸¥à¹‰à¸­à¸‡à¸—à¸µà¹ˆà¸«à¸±à¸™à¸›à¸£à¸°à¸ˆà¸±à¸™à¸«à¸™à¹‰à¸²à¸à¸±à¸šà¸•à¸±à¸§à¸¥à¸°à¸„à¸£ (à¸¡à¸­à¸‡à¸«à¸™à¹‰à¸²à¸•à¸±à¸§à¸¥à¸°à¸„à¸£à¹€à¸£à¸²)
+    -- 4. Calculate front-facing camera position toward character
     local charPos = root.Position
     local charLook = root.CFrame.LookVector
     local charRight = root.CFrame.RightVector
@@ -2160,13 +2160,13 @@ summonWardrobeWithAnimation = function()
 
     local camDist = 6.8
     local camHeight = 0.45
-    local camLateral = 1.35 -- à¹€à¸šà¸µà¹ˆà¸¢à¸‡à¸à¸¥à¹‰à¸­à¸‡à¹„à¸›à¸—à¸²à¸‡à¸‚à¸§à¸²à¸‚à¸­à¸‡à¸•à¸±à¸§à¸¥à¸°à¸„à¸£à¹€à¸¥à¹‡à¸à¸™à¹‰à¸­à¸¢ à¹€à¸žà¸·à¹ˆà¸­à¹ƒà¸«à¹‰à¸•à¸±à¸§à¸¥à¸°à¸„à¸£à¸­à¸¢à¸¹à¹ˆà¸‚à¸§à¸²à¸ˆà¸­ à¹à¸¥à¸°à¸¡à¸µà¸—à¸µà¹ˆà¸§à¹ˆà¸²à¸‡à¸‹à¹‰à¸²à¸¢à¸ˆà¸­à¸ªà¸³à¸«à¸£à¸±à¸š UI
+    local camLateral = 1.35 -- Lateral camera offset to keep character on the right side
 
     local goalCamPos = charFocus + (charLook * camDist) + (charRight * camLateral) + Vector3.new(0, camHeight, 0)
     local goalLookAt = charFocus - (charRight * 0.35)
     local goalCamCFrame = CFrame.lookAt(goalCamPos, goalLookAt)
 
-    -- 5. à¸„à¸±à¸•à¸‹à¸µà¸™à¸à¸¥à¹‰à¸­à¸‡à¹€à¸¥à¸·à¹ˆà¸­à¸™à¹€à¸‚à¹‰à¸²à¸¡à¸²à¸›à¸£à¸°à¸ˆà¸±à¸™à¸«à¸™à¹‰à¸²à¸•à¸±à¸§à¸¥à¸°à¸„à¸£à¸­à¸¢à¹ˆà¸²à¸‡à¸ªà¸¡à¸¹à¸— (Cinematic Camera Glide)
+    -- 5. Smooth cinematic camera glide in front of character (Cinematic Camera Glide)
     local startCamCFrame = camera.CFrame
     local enterDuration = 0.52
     local startTick = tick()
@@ -2179,7 +2179,7 @@ summonWardrobeWithAnimation = function()
     end
     camera.CFrame = goalCamCFrame
 
-    -- 6. à¸§à¸²à¸‡à¸•à¸³à¹à¸«à¸™à¹ˆà¸‡à¸«à¸™à¹‰à¸² 3D UI à¸•à¸¹à¹‰à¹à¸•à¹ˆà¸‡à¸•à¸±à¸§à¸—à¸²à¸‡à¸à¸±à¹ˆà¸‡à¸‹à¹‰à¸²à¸¢à¸‚à¸­à¸‡à¸ˆà¸­ à¹ƒà¸«à¹‰à¸«à¸±à¸™à¸•à¸£à¸‡à¹€à¸‚à¹‰à¸²à¸«à¸²à¸à¸¥à¹‰à¸­à¸‡à¸­à¸¢à¹ˆà¸²à¸‡à¸ªà¸¡à¸šà¸¹à¸£à¸“à¹Œà¹à¸šà¸š
+    -- 6. Position Wardrobe 3D UI on the left side facing camera
     local curCamCF = camera.CFrame
     local uiDist = 4.6
     local uiLeft = 2.25
@@ -2231,7 +2231,7 @@ summonWardrobeWithAnimation = function()
         end)
     end)
 
-    -- 7. à¹€à¸£à¸´à¹ˆà¸¡à¸£à¸°à¸šà¸šà¸à¸¥à¹‰à¸­à¸‡à¸•à¸£à¸§à¸ˆà¸”à¸¹à¸•à¸±à¸§à¸¥à¸°à¸„à¸£ 360 à¸­à¸‡à¸¨à¸² (à¸¥à¸²à¸à¹€à¸¡à¸²à¸ªà¹Œà¸«à¸¡à¸¸à¸™à¸£à¸­à¸šà¸•à¸±à¸§ + à¸‹à¸¹à¸¡à¹€à¸‚à¹‰à¸²à¸­à¸­à¸à¹„à¸”à¹‰)
+    -- 7. Initialize 360-degree orbit inspection controller (Drag mouse/touch + mouse wheel zoom)
     local baseYaw = math.atan2(charLook.X, charLook.Z)
     setupOrbitController(charFocus, baseYaw)
 end
@@ -2240,7 +2240,7 @@ hideWardrobeWithAnimation = function()
     if not isWardrobeVisible or isWardrobeAnimating then return end
     isWardrobeAnimating = true
 
-    -- à¸›à¸´à¸”à¸•à¸±à¸§à¸„à¸§à¸šà¸„à¸¸à¸¡à¸«à¸¡à¸¸à¸™à¸à¸¥à¹‰à¸­à¸‡
+    -- Cleanup orbit controller
     cleanupOrbitController()
 
     wardrobeBackSurfaceGui.Enabled = false
@@ -2262,7 +2262,7 @@ hideWardrobeWithAnimation = function()
     wardrobePart.Position = Vector3.new(0, 9999, 0)
     isWardrobeVisible = false
 
-    -- à¸„à¸±à¸•à¸‹à¸µà¸™à¸à¸¥à¹‰à¸­à¸‡à¹€à¸¥à¸·à¹ˆà¸­à¸™à¸à¸¥à¸±à¸šà¹„à¸›à¸¢à¸±à¸‡à¸¡à¸¸à¸¡à¸¡à¸­à¸‡à¹€à¸”à¸´à¸¡à¸‚à¸­à¸‡à¸œà¸¹à¹‰à¹€à¸¥à¹ˆà¸™
+    -- Smooth cinematic camera return to original player perspective
     local root = getRootPart()
     local returnDuration = 0.44
     local startCam = camera.CFrame
@@ -2277,7 +2277,7 @@ hideWardrobeWithAnimation = function()
     end
     camera.CFrame = goalCam
 
-    -- à¸„à¸·à¸™à¸„à¹ˆà¸²à¸›à¸£à¸°à¹€à¸ à¸—à¸à¸¥à¹‰à¸­à¸‡à¹€à¸”à¸´à¸¡ à¹à¸¥à¸°à¸›à¸¥à¸”à¸¥à¹‡à¸­à¸„à¸•à¸±à¸§à¸¥à¸°à¸„à¸£
+    -- Restore camera mode and unanchor character
     camera.CameraType = previousCameraType or Enum.CameraType.Custom
     player.CameraMinZoomDistance = 0.5
     player.CameraMaxZoomDistance = 128
@@ -2286,7 +2286,7 @@ hideWardrobeWithAnimation = function()
     end
     isWardrobeMode = false
 
-    -- à¸à¸¹à¹‰à¸„à¸·à¸™ UI à¸«à¸¥à¸±à¸à¸à¸¥à¸±à¸šà¸¡à¸²à¸–à¹‰à¸²à¸à¹ˆà¸­à¸™à¸«à¸™à¹‰à¸²à¸™à¸µà¹‰à¹€à¸›à¸´à¸”à¸­à¸¢à¸¹à¹ˆ
+    -- Re-summon main UI if it was visible before wardrobe
     if wasMainUIVisibleBeforeWardrobe then
         wasMainUIVisibleBeforeWardrobe = false
         summonUIWithAnimation()
@@ -2300,7 +2300,7 @@ wardrobeCloseBtn.Activated:Connect(function()
 end)
 
 -- ====================================================================
--- ScreenGui Trigger Controls (Floating Toggle Pill + Hotkeys + Triple-Tap)
+-- ScreenGui Trigger Controls (Roblox Logo Triple-Tap + Hotkeys)
 -- ====================================================================
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "SpatialUI_SecretOpener"
@@ -2308,82 +2308,10 @@ screenGui.ResetOnSpawn = false
 screenGui.DisplayOrder = 999
 screenGui.Parent = targetGuiParent
 
--- 1. Floating Toggle Button (Visible Pill with Dragging support)
-local toggleMenuBtn = Instance.new("TextButton")
-toggleMenuBtn.Name = "FloatingMenuToggle"
-toggleMenuBtn.Size = UDim2.new(0, 115, 0, 36)
-toggleMenuBtn.Position = UDim2.new(0, 16, 0.45, 0)
-toggleMenuBtn.BackgroundColor3 = Color3.fromRGB(15, 20, 32)
-toggleMenuBtn.BackgroundTransparency = 0.2
-toggleMenuBtn.Text = "âœ¦ 3D MENU"
-toggleMenuBtn.TextColor3 = Color3.fromRGB(240, 245, 255)
-toggleMenuBtn.TextSize = 13
-toggleMenuBtn.Font = Enum.Font.GothamBold
-toggleMenuBtn.AutoButtonColor = false
-toggleMenuBtn.Parent = screenGui
-
-local toggleCorner = Instance.new("UICorner")
-toggleCorner.CornerRadius = UDim.new(0, 18)
-toggleCorner.Parent = toggleMenuBtn
-
-local toggleStroke = Instance.new("UIStroke")
-toggleStroke.Thickness = 1.5
-toggleStroke.Color = Color3.fromRGB(0, 170, 255)
-toggleStroke.Transparency = 0.3
-toggleStroke.Parent = toggleMenuBtn
-
+-- 1. Screen Trigger Configuration
 updateToggleBtnState = function(open)
-    if not toggleMenuBtn or not toggleStroke then return end
-    if open then
-        toggleMenuBtn.Text = "âœ• CLOSE 3D"
-        toggleStroke.Color = Color3.fromRGB(255, 90, 90)
-    else
-        toggleMenuBtn.Text = "âœ¦ 3D MENU"
-        toggleStroke.Color = Color3.fromRGB(0, 170, 255)
-    end
+    -- Floating pill button removed per user request
 end
-
--- Draggable implementation for Floating Toggle Button
-do
-    local dragging = false
-    local dragInput, dragStart, startPos
-
-    toggleMenuBtn.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = toggleMenuBtn.Position
-
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                end
-            end)
-        end
-    end)
-
-    toggleMenuBtn.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            dragInput = input
-        end
-    end)
-
-    UserInputService.InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
-            local delta = input.Position - dragStart
-            toggleMenuBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
-end
-
-toggleMenuBtn.Activated:Connect(function()
-    if isWardrobeVisible then return end
-    if isUIVisible then
-        hideUIWithAnimation()
-    else
-        summonUIWithAnimation()
-    end
-end)
 
 -- 2. Secret Triple-Tap Trigger (on Roblox Logo)
 local secretButton = Instance.new("TextButton")
@@ -2590,7 +2518,7 @@ local loopConnection = RunService.RenderStepped:Connect(function(dt)
 end)
 
 -- ====================================================================
--- 2. Post-Camera Camlock Execution (à¸•à¸±à¸”à¸£à¸°à¸šà¸šà¸­à¸­à¹‚à¸•à¹‰à¹‚à¸«à¸¡à¸”à¹à¸¥à¸°à¸«à¸¡à¸¸à¸™à¸à¸¥à¹‰à¸­à¸‡à¸ˆà¸£à¸´à¸‡ 100%)
+-- 2. Post-Camera Camlock Execution (Precise camera aim tracking)
 -- ====================================================================
 local CAMLOCK_BIND_NAME = "SpatialUI_CamlockPostRender"
 RunService:BindToRenderStep(CAMLOCK_BIND_NAME, Enum.RenderPriority.Camera.Value + 1, function()
@@ -2604,10 +2532,10 @@ RunService:BindToRenderStep(CAMLOCK_BIND_NAME, Enum.RenderPriority.Camera.Value 
             local currentCamPos = camera.CFrame.Position
             local targetPos = lockedTargetPart.Position
             
-            -- à¸ªà¸£à¹‰à¸²à¸‡à¸¡à¸¸à¸¡à¸¡à¸­à¸‡à¸•à¸£à¸‡à¹„à¸›à¸¢à¸±à¸‡à¹€à¸›à¹‰à¸²à¸«à¸¡à¸²à¸¢ à¸“ à¸žà¸´à¸à¸±à¸”à¸›à¸±à¸ˆà¸ˆà¸¸à¸šà¸±à¸™à¸‚à¸­à¸‡à¸à¸¥à¹‰à¸­à¸‡à¸›à¸à¸•à¸´
+            -- Target aim direction toward locked part
             local targetLookCFrame = CFrame.lookAt(currentCamPos, targetPos)
             
-            -- à¹€à¸‚à¸µà¸¢à¸™à¸—à¸±à¸šà¸¡à¸¸à¸¡à¸¡à¸­à¸‡à¸«à¸¥à¸±à¸‡à¸ˆà¸²à¸à¸—à¸µà¹ˆ CameraModule à¸„à¸³à¸™à¸§à¸“à¹€à¸ªà¸£à¹‡à¸ˆà¸ªà¸´à¹‰à¸™
+            -- Smoothly lerp camera rotation after CameraModule finishes
             camera.CFrame = camera.CFrame:Lerp(targetLookCFrame, CAMLOCK_SMOOTHNESS)
         else
             isTargetLocked = false
