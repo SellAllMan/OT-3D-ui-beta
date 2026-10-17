@@ -1727,10 +1727,10 @@ local function moveUIByDelta(deltaX, deltaY)
 end
 
 local function moveWardrobeUIByDelta(deltaX, deltaY)
-    local root = getRootPart()
-    local rightVec = root and root.CFrame.RightVector or camera.CFrame.RightVector
-    local upVec = camera.CFrame.UpVector
-    local distance = root and (wardrobePart.Position - root.Position).Magnitude or 6
+    local camCF = camera.CFrame
+    local rightVec = camCF.RightVector
+    local upVec = camCF.UpVector
+    local distance = (wardrobePart.Position - camCF.Position).Magnitude
     local studsPerPixel = (distance * 0.0035)
 
     local moveOffset = (rightVec * (deltaX * studsPerPixel)) - (upVec * (deltaY * studsPerPixel))
@@ -2039,257 +2039,338 @@ end)
 -- ====================================================================
 -- Wardrobe Cinematic Cutscene & Custom Scriptable Camera System
 -- ====================================================================
-local wasMainUIVisibleBeforeWardrobe = false
-local previousCameraType = nil
-local previousCameraCFrame = nil
+do
+    local WARDROBE_CAM_BIND = "SpatialUI_WardrobeCameraRender"
+    local orbitYaw = 0
+    local orbitPitch = 4
+    local orbitRadius = 6.8
+    local orbitLateralOffset = 1.25
+    local isOrbitDragging = false
+    local isOrbitActive = false
+    local lastDragInputPos = nil
+    local activeWardrobeCamCF = nil
+    local currentCharFocus = Vector3.zero
+    local wardrobeRelCF = nil
+    local lastKnownWardrobeWorldCF = nil
+    local orbitInputBeganConn = nil
+    local orbitInputEndedConn = nil
+    local orbitInputChangedConn = nil
 
-local orbitYaw = 0
-local orbitPitch = 0
-local orbitRadius = 6.8
-local orbitLateralOffset = 1.35
-local isOrbitDragging = false
-local lastDragInputPos = nil
-
-cleanupOrbitController = function()
-    if orbitConn then
-        orbitConn:Disconnect()
-        orbitConn = nil
-    end
-    if orbitInputBeganConn then
-        orbitInputBeganConn:Disconnect()
-        orbitInputBeganConn = nil
-    end
-    if orbitInputEndedConn then
-        orbitInputEndedConn:Disconnect()
-        orbitInputEndedConn = nil
-    end
-    if orbitInputChangedConn then
-        orbitInputChangedConn:Disconnect()
-        orbitInputChangedConn = nil
-    end
-    isOrbitDragging = false
-    lastDragInputPos = nil
-end
-
-setupOrbitController = function(charFocus, baseYaw)
-    cleanupOrbitController()
-    orbitYaw = baseYaw
-    orbitPitch = 4
-    orbitRadius = 6.8
-    orbitLateralOffset = 1.35
-
-    orbitInputBeganConn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch then
-            isOrbitDragging = true
-            lastDragInputPos = input.Position
-        end
-    end)
-
-    orbitInputEndedConn = UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch then
-            isOrbitDragging = false
-            lastDragInputPos = nil
-        end
-    end)
-
-    orbitInputChangedConn = UserInputService.InputChanged:Connect(function(input)
-        if isOrbitDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            if lastDragInputPos then
-                local delta = input.Position - lastDragInputPos
-                orbitYaw = orbitYaw - (delta.X * 0.007)
-                orbitPitch = math.clamp(orbitPitch - (delta.Y * 0.4), -55, 65)
+    local function forceCharacterVisible(char)
+        if not char then return end
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.LocalTransparencyModifier = 0
             end
-            lastDragInputPos = input.Position
-        elseif input.UserInputType == Enum.UserInputType.MouseWheel then
-            orbitRadius = math.clamp(orbitRadius - (input.Position.Z * 0.8), 3.0, 11.5)
         end
-    end)
-
-    orbitConn = RunService.RenderStepped:Connect(function(dt)
-        if not isWardrobeMode or camera.CameraType ~= Enum.CameraType.Scriptable then return end
-        local rotCF = CFrame.Angles(0, orbitYaw, 0) * CFrame.Angles(math.rad(orbitPitch), 0, 0)
-        local camPos = charFocus + rotCF:VectorToWorldSpace(Vector3.new(orbitLateralOffset, 0, orbitRadius))
-        local lookTarget = charFocus - rotCF:VectorToWorldSpace(Vector3.new(orbitLateralOffset * 0.35, 0, 0))
-        camera.CFrame = camera.CFrame:Lerp(CFrame.lookAt(camPos, lookTarget), 0.25)
-    end)
-end
-
-summonWardrobeWithAnimation = function()
-    if isWardrobeVisible or isWardrobeAnimating then return end
-    isWardrobeAnimating = true
-    isWardrobeMode = true
-
-    local char = player.Character or player.CharacterAdded:Wait()
-    local root = char:WaitForChild("HumanoidRootPart", 10)
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not root or not hum then
-        isWardrobeAnimating = false
-        isWardrobeMode = false
-        return
     end
 
-    -- 1. Hide main UI completely while wardrobe is open
-    wasMainUIVisibleBeforeWardrobe = isUIVisible
-    if isUIVisible then
-        surfaceGui.Enabled = false
-        backSurfaceGui.Enabled = false
-        uiPart.Position = Vector3.new(0, 9999, 0)
-        isUIVisible = false
-        if updateToggleBtnState then updateToggleBtnState(false) end
+    local function computeOrbitCamCFrame(focusPos, yaw, pitch, radius, lateral)
+        local rotCF = CFrame.Angles(0, yaw, 0) * CFrame.Angles(math.rad(pitch), 0, 0)
+        local offsetPos = rotCF:VectorToWorldSpace(Vector3.new(0, 0.35, radius))
+        local centerCamCF = CFrame.lookAt(focusPos + offsetPos, focusPos + Vector3.new(0, 0.15, 0))
+        return centerCamCF * CFrame.new(-lateral, 0, 0)
     end
 
-    -- 2. Anchor character position to prevent sliding
-    root.AssemblyLinearVelocity = Vector3.zero
-    root.AssemblyAngularVelocity = Vector3.zero
-    root.Anchored = true
-
-    -- 3. Switch camera to Scriptable (Smooth 100% custom camera without CameraModule interference)
-    previousCameraType = camera.CameraType
-    previousCameraCFrame = camera.CFrame
-    camera.CameraType = Enum.CameraType.Scriptable
-
-    -- 4. Calculate front-facing camera position toward character
-    local charPos = root.Position
-    local charLook = root.CFrame.LookVector
-    local charRight = root.CFrame.RightVector
-    local charFocus = charPos + Vector3.new(0, 0.6, 0)
-
-    local camDist = 6.8
-    local camHeight = 0.45
-    local camLateral = 1.35 -- Lateral camera offset to keep character on the right side
-
-    local goalCamPos = charFocus + (charLook * camDist) + (charRight * camLateral) + Vector3.new(0, camHeight, 0)
-    local goalLookAt = charFocus - (charRight * 0.35)
-    local goalCamCFrame = CFrame.lookAt(goalCamPos, goalLookAt)
-
-    -- 5. Smooth cinematic camera glide in front of character (Cinematic Camera Glide)
-    local startCamCFrame = camera.CFrame
-    local enterDuration = 0.52
-    local startTick = tick()
-
-    while (tick() - startTick < enterDuration) do
-        local alpha = math.clamp((tick() - startTick) / enterDuration, 0, 1)
-        local smoothAlpha = TweenService:GetValue(alpha, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out)
-        camera.CFrame = startCamCFrame:Lerp(goalCamCFrame, smoothAlpha)
-        RunService.RenderStepped:Wait()
-    end
-    camera.CFrame = goalCamCFrame
-
-    -- 6. Position Wardrobe 3D UI on the left side facing camera
-    local curCamCF = camera.CFrame
-    local uiDist = 4.6
-    local uiLeft = 2.25
-    local uiElev = 0.05
-
-    local wardrobeSpawnPos = curCamCF.Position + (curCamCF.LookVector * uiDist) - (curCamCF.RightVector * uiLeft) + (curCamCF.UpVector * uiElev)
-    local finalCFrame = CFrame.lookAt(wardrobeSpawnPos, wardrobeSpawnPos + curCamCF.LookVector)
-
-    wardrobePart.Size = Vector3.new(0.2, 0.2, 0.05)
-    wardrobePart.CFrame = finalCFrame * CFrame.new(0, -0.6, -0.4)
-    wardrobeContainer.GroupTransparency = 1
-    wardrobeMainWindow.Size = UDim2.new(0.15, 0, 0.1, 0)
-    wardrobeMainWindow.Position = UDim2.new(0.42, 0, 0.45, 0)
-    wardrobeGrabBarContainer.Position = UDim2.new(0, 0, 1, -15)
-
-    wardrobeSurfaceGui.AlwaysOnTop = true
-    wardrobeSurfaceGui.Enabled = true
-    wardrobeBackSurfaceGui.Enabled = true
-    isWardrobeVisible = true
-
-    profileStroke.Color = Color3.fromRGB(50, 140, 255)
-    TweenService:Create(profileBtn, TweenInfo.new(0.25), {BackgroundColor3 = Color3.fromRGB(35, 45, 65)}):Play()
-
-    local partTween = TweenService:Create(wardrobePart, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-        Size = Vector3.new(4.2, 3.6, 0.05),
-        CFrame = finalCFrame
-    })
-    local containerFade = TweenService:Create(wardrobeContainer, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-        GroupTransparency = 0
-    })
-
-    partTween:Play()
-    containerFade:Play()
-
-    task.delay(0.1, function()
-        TweenService:Create(wardrobeMainWindow, TweenInfo.new(0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-            Size = UDim2.new(1, 0, 1, -55),
-            Position = UDim2.new(0, 0, 0, 0)
-        }):Play()
-    end)
-
-    task.delay(0.25, function()
-        local barTween = TweenService:Create(wardrobeGrabBarContainer, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-            Position = UDim2.new(0, 0, 1, -50)
-        })
-        barTween:Play()
-        barTween.Completed:Connect(function()
-            isWardrobeAnimating = false
+    local function startWardrobeCameraBind()
+        pcall(function()
+            RunService:UnbindFromRenderStep(WARDROBE_CAM_BIND)
         end)
-    end)
+        RunService:BindToRenderStep(WARDROBE_CAM_BIND, Enum.RenderPriority.Camera.Value + 2, function(dt)
+            if not isWardrobeMode then return end
 
-    -- 7. Initialize 360-degree orbit inspection controller (Drag mouse/touch + mouse wheel zoom)
-    local baseYaw = math.atan2(charLook.X, charLook.Z)
-    setupOrbitController(charFocus, baseYaw)
-end
+            camera.CameraType = Enum.CameraType.Scriptable
+            forceCharacterVisible(player.Character)
 
-hideWardrobeWithAnimation = function()
-    if not isWardrobeVisible or isWardrobeAnimating then return end
-    isWardrobeAnimating = true
+            if isOrbitActive and activeWardrobeCamCF then
+                local root = getRootPart()
+                if root then
+                    currentCharFocus = root.Position + Vector3.new(0, 0.55, 0)
+                end
+                local targetCF = computeOrbitCamCFrame(currentCharFocus, orbitYaw, orbitPitch, orbitRadius, orbitLateralOffset)
+                activeWardrobeCamCF = activeWardrobeCamCF:Lerp(targetCF, math.clamp(dt * 14, 0.15, 0.45))
+            end
 
-    -- Cleanup orbit controller
-    cleanupOrbitController()
+            if activeWardrobeCamCF then
+                camera.CFrame = activeWardrobeCamCF
 
-    wardrobeBackSurfaceGui.Enabled = false
-    profileStroke.Color = Color3.fromRGB(65, 65, 85)
-    TweenService:Create(profileBtn, TweenInfo.new(0.25), {BackgroundColor3 = Color3.fromRGB(24, 24, 32)}):Play()
-
-    TweenService:Create(wardrobeGrabBarContainer, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Position = UDim2.new(0, 0, 1, -15) }):Play()
-    TweenService:Create(wardrobeMainWindow, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Size = UDim2.new(0, 0, 0.05, 0), Position = UDim2.new(0.5, 0, 0.5, 0) }):Play()
-
-    local pushbackTarget = CFrame.new(wardrobePart.Position + (camera.CFrame.LookVector * 1.5) + Vector3.new(0, 0.35, 0)) * (wardrobePart.CFrame - wardrobePart.Position)
-    local partTween = TweenService:Create(wardrobePart, TweenInfo.new(0.24, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Size = Vector3.new(0.3, 0.3, 0.05), CFrame = pushbackTarget })
-    local fadeTween = TweenService:Create(wardrobeContainer, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { GroupTransparency = 1 })
-
-    partTween:Play()
-    fadeTween:Play()
-    fadeTween.Completed:Wait()
-
-    wardrobeSurfaceGui.Enabled = false
-    wardrobePart.Position = Vector3.new(0, 9999, 0)
-    isWardrobeVisible = false
-
-    -- Smooth cinematic camera return to original player perspective
-    local root = getRootPart()
-    local returnDuration = 0.44
-    local startCam = camera.CFrame
-    local goalCam = previousCameraCFrame or (root and CFrame.lookAt(root.Position - (root.CFrame.LookVector * 6.5) + Vector3.new(0, 1.8, 0), root.Position + Vector3.new(0, 0.8, 0)) or startCam)
-
-    local startTick = tick()
-    while (tick() - startTick < returnDuration) do
-        local alpha = math.clamp((tick() - startTick) / returnDuration, 0, 1)
-        local smoothAlpha = TweenService:GetValue(alpha, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-        camera.CFrame = startCam:Lerp(goalCam, smoothAlpha)
-        RunService.RenderStepped:Wait()
-    end
-    camera.CFrame = goalCam
-
-    -- Restore camera mode and unanchor character
-    camera.CameraType = previousCameraType or Enum.CameraType.Custom
-    player.CameraMinZoomDistance = 0.5
-    player.CameraMaxZoomDistance = 128
-    if not freezeCharacter and root then
-        root.Anchored = false
-    end
-    isWardrobeMode = false
-
-    -- Re-summon main UI if it was visible before wardrobe
-    if wasMainUIVisibleBeforeWardrobe then
-        wasMainUIVisibleBeforeWardrobe = false
-        summonUIWithAnimation()
+                if isWardrobeVisible and not isWardrobeAnimating and wardrobePart then
+                    if interactionState == "DRAGGING_WARDROBE" then
+                        wardrobeRelCF = activeWardrobeCamCF:ToObjectSpace(wardrobePart.CFrame)
+                        lastKnownWardrobeWorldCF = wardrobePart.CFrame
+                    elseif wardrobeRelCF then
+                        local desiredWorldCF = activeWardrobeCamCF:ToWorldSpace(wardrobeRelCF)
+                        wardrobePart.CFrame = CFrame.lookAt(desiredWorldCF.Position, activeWardrobeCamCF.Position)
+                    end
+                end
+            end
+        end)
     end
 
-    isWardrobeAnimating = false
+    cleanupOrbitController = function()
+        isOrbitActive = false
+        pcall(function()
+            RunService:UnbindFromRenderStep(WARDROBE_CAM_BIND)
+        end)
+        if orbitInputBeganConn then
+            orbitInputBeganConn:Disconnect()
+            orbitInputBeganConn = nil
+        end
+        if orbitInputEndedConn then
+            orbitInputEndedConn:Disconnect()
+            orbitInputEndedConn = nil
+        end
+        if orbitInputChangedConn then
+            orbitInputChangedConn:Disconnect()
+            orbitInputChangedConn = nil
+        end
+        isOrbitDragging = false
+        lastDragInputPos = nil
+    end
+
+    setupOrbitController = function(charFocus, baseYaw)
+        currentCharFocus = charFocus
+        orbitYaw = baseYaw
+        orbitPitch = 4
+        orbitRadius = 6.8
+        orbitLateralOffset = 1.25
+        isOrbitActive = true
+
+        if orbitInputBeganConn then orbitInputBeganConn:Disconnect() end
+        if orbitInputEndedConn then orbitInputEndedConn:Disconnect() end
+        if orbitInputChangedConn then orbitInputChangedConn:Disconnect() end
+
+        orbitInputBeganConn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if gameProcessed or interactionState ~= "IDLE" then return end
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch then
+                isOrbitDragging = true
+                lastDragInputPos = input.Position
+            end
+        end)
+
+        orbitInputEndedConn = UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch then
+                isOrbitDragging = false
+                lastDragInputPos = nil
+            end
+        end)
+
+        orbitInputChangedConn = UserInputService.InputChanged:Connect(function(input)
+            if interactionState ~= "IDLE" then
+                isOrbitDragging = false
+                lastDragInputPos = nil
+                return
+            end
+            if isOrbitDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                if lastDragInputPos then
+                    local delta = input.Position - lastDragInputPos
+                    orbitYaw = orbitYaw - (delta.X * 0.0075)
+                    orbitPitch = math.clamp(orbitPitch - (delta.Y * 0.35), -45, 55)
+                end
+                lastDragInputPos = input.Position
+            elseif input.UserInputType == Enum.UserInputType.MouseWheel then
+                orbitRadius = math.clamp(orbitRadius - (input.Position.Z * 0.75), 3.2, 12.0)
+            end
+        end)
+    end
+
+    summonWardrobeWithAnimation = function()
+        if isWardrobeVisible or isWardrobeAnimating then return end
+        isWardrobeAnimating = true
+        isWardrobeMode = true
+
+        local char = player.Character or player.CharacterAdded:Wait()
+        local root = char:WaitForChild("HumanoidRootPart", 10)
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not root or not hum then
+            isWardrobeAnimating = false
+            isWardrobeMode = false
+            return
+        end
+
+        -- 1. Save previous camera state and unlock First-Person zoom clamp immediately
+        previousCameraType = camera.CameraType
+        previousCameraCFrame = camera.CFrame
+        activeWardrobeCamCF = camera.CFrame
+
+        player.CameraMinZoomDistance = 0.5
+        player.CameraMaxZoomDistance = 128
+        camera.CameraType = Enum.CameraType.Scriptable
+        forceCharacterVisible(char)
+
+        -- Start post-camera RenderStep bind so CameraModule cannot snap back to first person
+        startWardrobeCameraBind()
+
+        -- 2. Anchor character position cleanly
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+        root.Anchored = true
+
+        -- 3. Smoothly shrink & hide the Main 3D UI while camera starts zooming out
+        wasMainUIVisibleBeforeWardrobe = isUIVisible
+        if isUIVisible then
+            isUIVisible = false
+            backSurfaceGui.Enabled = false
+            if updateToggleBtnState then updateToggleBtnState(false) end
+
+            local pushbackTarget = CFrame.new(uiPart.Position + (camera.CFrame.LookVector * 1.4) + Vector3.new(0, 0.3, 0)) * (uiPart.CFrame - uiPart.Position)
+            TweenService:Create(uiPart, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                Size = Vector3.new(0.25, 0.25, 0.05),
+                CFrame = pushbackTarget
+            }):Play()
+            TweenService:Create(container, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                GroupTransparency = 1
+            }):Play()
+
+            task.delay(0.22, function()
+                if not isUIVisible then
+                    surfaceGui.Enabled = false
+                    uiPart.Position = Vector3.new(0, 9999, 0)
+                end
+            end)
+        end
+
+        -- 4. Calculate front-facing camera position looking at our character's face/front
+        local charPos = root.Position
+        local charLook = root.CFrame.LookVector
+        local charFocus = charPos + Vector3.new(0, 0.55, 0)
+        local baseYaw = math.atan2(charLook.X, charLook.Z)
+
+        orbitYaw = baseYaw
+        orbitPitch = 4
+        orbitRadius = 6.8
+        orbitLateralOffset = 1.25
+
+        local startCamCFrame = activeWardrobeCamCF
+        local goalCamCFrame = computeOrbitCamCFrame(charFocus, orbitYaw, orbitPitch, orbitRadius, orbitLateralOffset)
+
+        -- 5. Smooth cinematic zoom-out & sweep to front of character
+        local enterDuration = 0.58
+        local startTick = tick()
+
+        while (tick() - startTick < enterDuration) do
+            local alpha = math.clamp((tick() - startTick) / enterDuration, 0, 1)
+            local smoothAlpha = TweenService:GetValue(alpha, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+            activeWardrobeCamCF = startCamCFrame:Lerp(goalCamCFrame, smoothAlpha)
+            RunService.RenderStepped:Wait()
+        end
+        activeWardrobeCamCF = goalCamCFrame
+
+        -- 6. Position Wardrobe 3D UI on the left side facing the camera directly
+        local uiDist = 4.6
+        local uiLeft = 2.05
+        local uiElev = -0.05
+
+        local wardrobeSpawnPos = goalCamCFrame.Position + (goalCamCFrame.LookVector * uiDist) - (goalCamCFrame.RightVector * uiLeft) + (goalCamCFrame.UpVector * uiElev)
+        local finalCFrame = CFrame.lookAt(wardrobeSpawnPos, goalCamCFrame.Position)
+        wardrobeRelCF = goalCamCFrame:ToObjectSpace(finalCFrame)
+
+        wardrobePart.Size = Vector3.new(0.2, 0.2, 0.05)
+        wardrobePart.CFrame = finalCFrame * CFrame.new(0, -0.6, -0.4)
+        wardrobeContainer.GroupTransparency = 1
+        wardrobeMainWindow.Size = UDim2.new(0.15, 0, 0.1, 0)
+        wardrobeMainWindow.Position = UDim2.new(0.42, 0, 0.45, 0)
+        wardrobeGrabBarContainer.Position = UDim2.new(0, 0, 1, -15)
+
+        wardrobeSurfaceGui.AlwaysOnTop = false
+        wardrobeSurfaceGui.Enabled = true
+        wardrobeBackSurfaceGui.Enabled = true
+        isWardrobeVisible = true
+
+        profileStroke.Color = Color3.fromRGB(50, 140, 255)
+        TweenService:Create(profileBtn, TweenInfo.new(0.25), {BackgroundColor3 = Color3.fromRGB(35, 45, 65)}):Play()
+
+        local partTween = TweenService:Create(wardrobePart, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Size = Vector3.new(4.2, 3.6, 0.05),
+            CFrame = finalCFrame
+        })
+        local containerFade = TweenService:Create(wardrobeContainer, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            GroupTransparency = 0
+        })
+
+        partTween:Play()
+        containerFade:Play()
+
+        task.delay(0.1, function()
+            TweenService:Create(wardrobeMainWindow, TweenInfo.new(0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Size = UDim2.new(1, 0, 1, -55),
+                Position = UDim2.new(0, 0, 0, 0)
+            }):Play()
+        end)
+
+        -- 7. Enable 360-degree orbit inspection controller
+        setupOrbitController(charFocus, baseYaw)
+
+        task.delay(0.45, function()
+            local barTween = TweenService:Create(wardrobeGrabBarContainer, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Position = UDim2.new(0, 0, 1, -50)
+            })
+            barTween:Play()
+            barTween.Completed:Connect(function()
+                isWardrobeAnimating = false
+            end)
+        end)
+    end
+
+    hideWardrobeWithAnimation = function()
+        if not isWardrobeVisible or isWardrobeAnimating then return end
+        isWardrobeAnimating = true
+        isOrbitActive = false
+
+        wardrobeBackSurfaceGui.Enabled = false
+        profileStroke.Color = Color3.fromRGB(65, 65, 85)
+        TweenService:Create(profileBtn, TweenInfo.new(0.25), {BackgroundColor3 = Color3.fromRGB(24, 24, 32)}):Play()
+
+        TweenService:Create(wardrobeGrabBarContainer, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Position = UDim2.new(0, 0, 1, -15) }):Play()
+        TweenService:Create(wardrobeMainWindow, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Size = UDim2.new(0, 0, 0.05, 0), Position = UDim2.new(0.5, 0, 0.5, 0) }):Play()
+
+        local camCF = activeWardrobeCamCF or camera.CFrame
+        local pushbackTarget = CFrame.new(wardrobePart.Position + (camCF.LookVector * 1.5) + Vector3.new(0, 0.35, 0)) * (wardrobePart.CFrame - wardrobePart.Position)
+        local partTween = TweenService:Create(wardrobePart, TweenInfo.new(0.24, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Size = Vector3.new(0.3, 0.3, 0.05), CFrame = pushbackTarget })
+        local fadeTween = TweenService:Create(wardrobeContainer, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { GroupTransparency = 1 })
+
+        partTween:Play()
+        fadeTween:Play()
+        fadeTween.Completed:Wait()
+
+        wardrobeSurfaceGui.Enabled = false
+        wardrobePart.Position = Vector3.new(0, 9999, 0)
+        isWardrobeVisible = false
+
+        -- Smooth cinematic camera return behind player
+        local root = getRootPart()
+        local returnDuration = 0.42
+        local startCam = activeWardrobeCamCF or camera.CFrame
+        local goalCam = previousCameraCFrame or (root and CFrame.lookAt(root.Position - (root.CFrame.LookVector * 6.5) + Vector3.new(0, 1.8, 0), root.Position + Vector3.new(0, 0.8, 0)) or startCam)
+
+        local startTick = tick()
+        while (tick() - startTick < returnDuration) do
+            local alpha = math.clamp((tick() - startTick) / returnDuration, 0, 1)
+            local smoothAlpha = TweenService:GetValue(alpha, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+            activeWardrobeCamCF = startCam:Lerp(goalCam, smoothAlpha)
+            RunService.RenderStepped:Wait()
+        end
+        activeWardrobeCamCF = goalCam
+
+        -- Cleanup custom camera bind and restore default camera
+        cleanupOrbitController()
+        activeWardrobeCamCF = nil
+        camera.CameraType = previousCameraType or Enum.CameraType.Custom
+        player.CameraMinZoomDistance = 0.5
+        player.CameraMaxZoomDistance = 128
+
+        if not freezeCharacter and root then
+            root.Anchored = false
+        end
+        isWardrobeMode = false
+        isWardrobeAnimating = false
+
+        -- Re-summon main UI if it was visible before wardrobe
+        if wasMainUIVisibleBeforeWardrobe then
+            wasMainUIVisibleBeforeWardrobe = false
+            summonUIWithAnimation()
+        end
+    end
 end
 
 wardrobeCloseBtn.Activated:Connect(function()
