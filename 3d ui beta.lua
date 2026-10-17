@@ -2044,12 +2044,14 @@ do
     local orbitYaw = 0
     local orbitPitch = 4
     local orbitRadius = 6.8
-    local orbitLateralOffset = 1.25
+    local orbitLateralOffset = 1.05
     local isOrbitDragging = false
     local isOrbitActive = false
     local lastDragInputPos = nil
     local activeWardrobeCamCF = nil
     local currentCharFocus = Vector3.zero
+    local lockedCharCFrame = nil
+    local savedAutoRotate = true
     local wardrobeRelCF = nil
     local lastKnownWardrobeWorldCF = nil
     local orbitInputBeganConn = nil
@@ -2079,11 +2081,27 @@ do
         RunService:BindToRenderStep(WARDROBE_CAM_BIND, Enum.RenderPriority.Camera.Value + 2, function(dt)
             if not isWardrobeMode then return end
 
+            -- Prevent Roblox CameraModule from locking cursor or forcing ShiftLock/FirstPerson rotation
             camera.CameraType = Enum.CameraType.Scriptable
-            forceCharacterVisible(player.Character)
+            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+            UserInputService.MouseIconEnabled = true
+            pcall(function()
+                UserSettings().GameSettings.RotationType = Enum.RotationType.MovementRelative
+            end)
+
+            local char = player.Character
+            forceCharacterVisible(char)
+
+            local root = getRootPart()
+            local hum = getHumanoid()
+            if hum then
+                hum.AutoRotate = false
+            end
+            if root and lockedCharCFrame then
+                root.CFrame = lockedCharCFrame
+            end
 
             if isOrbitActive and activeWardrobeCamCF then
-                local root = getRootPart()
                 if root then
                     currentCharFocus = root.Position + Vector3.new(0, 0.55, 0)
                 end
@@ -2133,7 +2151,7 @@ do
         orbitYaw = baseYaw
         orbitPitch = 4
         orbitRadius = 6.8
-        orbitLateralOffset = 1.25
+        orbitLateralOffset = 1.05
         isOrbitActive = true
 
         if orbitInputBeganConn then orbitInputBeganConn:Disconnect() end
@@ -2141,8 +2159,12 @@ do
         if orbitInputChangedConn then orbitInputChangedConn:Disconnect() end
 
         orbitInputBeganConn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-            if gameProcessed or interactionState ~= "IDLE" then return end
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch then
+            if interactionState ~= "IDLE" then return end
+            -- Note: MouseButton2 has gameProcessed=true because Roblox CameraModule binds RightClick, so allow MouseButton2 regardless
+            if input.UserInputType == Enum.UserInputType.MouseButton2 then
+                isOrbitDragging = true
+                lastDragInputPos = input.Position
+            elseif not gameProcessed and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
                 isOrbitDragging = true
                 lastDragInputPos = input.Position
             end
@@ -2162,11 +2184,19 @@ do
                 return
             end
             if isOrbitDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                local deltaX = 0
+                local deltaY = 0
                 if lastDragInputPos then
-                    local delta = input.Position - lastDragInputPos
-                    orbitYaw = orbitYaw - (delta.X * 0.0075)
-                    orbitPitch = math.clamp(orbitPitch - (delta.Y * 0.35), -45, 55)
+                    local posDelta = input.Position - lastDragInputPos
+                    deltaX = posDelta.X
+                    deltaY = posDelta.Y
                 end
+                if math.abs(deltaX) < 0.001 and math.abs(deltaY) < 0.001 and input.Delta then
+                    deltaX = input.Delta.X
+                    deltaY = input.Delta.Y
+                end
+                orbitYaw = orbitYaw - (deltaX * 0.0085)
+                orbitPitch = math.clamp(orbitPitch - (deltaY * 0.35), -45, 55)
                 lastDragInputPos = input.Position
             elseif input.UserInputType == Enum.UserInputType.MouseWheel then
                 orbitRadius = math.clamp(orbitRadius - (input.Position.Z * 0.75), 3.2, 12.0)
@@ -2188,17 +2218,24 @@ do
             return
         end
 
-        -- 1. Save previous camera state and unlock First-Person zoom clamp immediately
+        -- 1. Save previous camera state and force CameraModule out of First-Person (minZoom > 0.5)
         previousCameraType = camera.CameraType
         previousCameraCFrame = camera.CFrame
         activeWardrobeCamCF = camera.CFrame
+        lockedCharCFrame = root.CFrame
+        savedAutoRotate = hum.AutoRotate
+        hum.AutoRotate = false
 
-        player.CameraMinZoomDistance = 0.5
         player.CameraMaxZoomDistance = 128
+        player.CameraMinZoomDistance = 7.0
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        pcall(function()
+            UserSettings().GameSettings.RotationType = Enum.RotationType.MovementRelative
+        end)
         camera.CameraType = Enum.CameraType.Scriptable
         forceCharacterVisible(char)
 
-        -- Start post-camera RenderStep bind so CameraModule cannot snap back to first person
+        -- Start post-camera RenderStep bind so CameraModule cannot snap back to first person or ShiftLock
         startWardrobeCameraBind()
 
         -- 2. Anchor character position cleanly
@@ -2239,7 +2276,7 @@ do
         orbitYaw = baseYaw
         orbitPitch = 4
         orbitRadius = 6.8
-        orbitLateralOffset = 1.25
+        orbitLateralOffset = 1.05
 
         local startCamCFrame = activeWardrobeCamCF
         local goalCamCFrame = computeOrbitCamCFrame(charFocus, orbitYaw, orbitPitch, orbitRadius, orbitLateralOffset)
@@ -2339,6 +2376,7 @@ do
 
         -- Smooth cinematic camera return behind player
         local root = getRootPart()
+        local hum = getHumanoid()
         local returnDuration = 0.42
         local startCam = activeWardrobeCamCF or camera.CFrame
         local goalCam = previousCameraCFrame or (root and CFrame.lookAt(root.Position - (root.CFrame.LookVector * 6.5) + Vector3.new(0, 1.8, 0), root.Position + Vector3.new(0, 0.8, 0)) or startCam)
@@ -2355,6 +2393,10 @@ do
         -- Cleanup custom camera bind and restore default camera
         cleanupOrbitController()
         activeWardrobeCamCF = nil
+        lockedCharCFrame = nil
+        if hum then
+            hum.AutoRotate = (savedAutoRotate ~= false)
+        end
         camera.CameraType = previousCameraType or Enum.CameraType.Custom
         player.CameraMinZoomDistance = 0.5
         player.CameraMaxZoomDistance = 128
