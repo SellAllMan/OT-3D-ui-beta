@@ -132,10 +132,10 @@ local mobileGui, mobileFlyFrame
 local flyAttachment, flyVelocity, flyAlign, startFly, stopFly
 local updateESP, applyFullbright
 
-local wardrobePart, wardrobeSurfaceGui, wardrobeBackSurfaceGui, wardrobeContainer, wardrobeMainWindow, wardrobeGrabBarContainer, wardrobeCloseBtn
+local wardrobePart, wardrobeSurfaceGui, wardrobeBackSurfaceGui, wardrobeContainer, wardrobeMainWindow, wardrobeGrabBarContainer, wardrobeCloseBtn, wardrobePage
 local wardrobeVisualBar, visualBar, resizeHandle, line1, line2
 local profileBtn, profileStroke
-local restoreCharacterAppearance
+local restoreCharacterAppearance, freezeCharacter, isHoveringWardrobeUI
 
 local performZoomInAndAlign, performZoomOut
 local summonUIWithAnimation, hideUIWithAnimation
@@ -2600,7 +2600,7 @@ wardrobeSubTitle.Font = Enum.Font.GothamBold
 wardrobeSubTitle.TextXAlignment = Enum.TextXAlignment.Left
 wardrobeSubTitle.Parent = wardrobeMainWindow
 
-local wardrobePage = Instance.new("ScrollingFrame")
+wardrobePage = Instance.new("ScrollingFrame")
 wardrobePage.Size = UDim2.new(1, 0, 1, -50)
 wardrobePage.Position = UDim2.new(0, 0, 0, 50)
 wardrobePage.BackgroundTransparency = 1
@@ -2645,7 +2645,7 @@ wardrobeBarStroke.Color = Color3.fromRGB(200, 220, 255)
 wardrobeBarStroke.Transparency = 0.6
 wardrobeBarStroke.Thickness = 1.2
 
-local isHoveringWardrobeUI = false
+isHoveringWardrobeUI = false
 local function trackWardrobeHover(guiObj)
     if not guiObj or not guiObj:IsA("GuiObject") then return end
     guiObj.MouseEnter:Connect(function()
@@ -2659,9 +2659,13 @@ end
 trackWardrobeHover(wardrobeMainWindow)
 trackWardrobeHover(wardrobePage)
 trackWardrobeHover(wardrobeGrabBarContainer)
+end -- [End Wardrobe 3D UI Setup Block]
 
+-- ====================================================================
 -- Character Cosmetic Features Logic
-local freezeCharacter = false
+-- ====================================================================
+do
+freezeCharacter = false
 local rainbowSkinEnabled = false
 local ghostModeEnabled = false
 local forcefieldEnabled = false
@@ -3048,7 +3052,12 @@ profileBtn.Activated:Connect(function()
         summonWardrobeWithAnimation()
     end
 end)
+end -- [End Character Cosmetic Features Block]
 
+-- ====================================================================
+-- Resize Corner Handle & Drag Handlers
+-- ====================================================================
+do
 -- Resize Corner Handle
 resizeHandle = Instance.new("TextButton")
 resizeHandle.Name = "ResizeHandle"
@@ -3071,8 +3080,8 @@ local function createHandleLine(sizeX, posX, posY)
     return line
 end
 
-local line1 = createHandleLine(16, 18, 24)
-local line2 = createHandleLine(9, 25, 31)
+line1 = createHandleLine(16, 18, 24)
+line2 = createHandleLine(9, 25, 31)
 
 -- Grab Bar Area (Bottom)
 grabBarContainer = Instance.new("Frame")
@@ -3242,7 +3251,7 @@ local function endDragOrResize(input)
 end
 
 UserInputService.InputEnded:Connect(endDragOrResize)
-end -- [End Wardrobe & Drag Handlers Block]
+end -- [End Drag / Resize Handlers Block]
 
 -- ====================================================================
 -- Camera Alignment Zoom
