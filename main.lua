@@ -83,7 +83,7 @@ local function isCurrentlyFirstPerson()
     local head = getHead()
     if head then
         local distToHead = (camera.CFrame.Position - head.Position).Magnitude
-        if distToHead <= 0.85 or head.LocalTransparencyModifier > 0.5 then
+        if distToHead <= 1.25 then
             return true, distToHead
         end
         return false, distToHead
@@ -2542,9 +2542,45 @@ local wardrobeStroke = Instance.new("UIStroke", wardrobeMainWindow)
 wardrobeStroke.Color = Color3.fromRGB(65, 65, 80)
 wardrobeStroke.Thickness = 1.5
 
+local wardrobeBackBtn = Instance.new("TextButton")
+wardrobeBackBtn.Name = "WardrobeBackButton"
+wardrobeBackBtn.Size = UDim2.new(0, 28, 0, 28)
+wardrobeBackBtn.Position = UDim2.new(0, 12, 0, 8)
+wardrobeBackBtn.BackgroundColor3 = Color3.fromRGB(30, 34, 46)
+wardrobeBackBtn.Text = ""
+wardrobeBackBtn.AutoButtonColor = false
+wardrobeBackBtn.Parent = wardrobeMainWindow
+Instance.new("UICorner", wardrobeBackBtn).CornerRadius = UDim.new(0, 7)
+
+local wardrobeBackStroke = Instance.new("UIStroke", wardrobeBackBtn)
+wardrobeBackStroke.Color = Color3.fromRGB(55, 62, 82)
+wardrobeBackStroke.Thickness = 1
+
+local wardrobeBackIcon = Instance.new("ImageLabel")
+wardrobeBackIcon.Size = UDim2.new(0, 16, 0, 16)
+wardrobeBackIcon.Position = UDim2.new(0.5, -8, 0.5, -8)
+wardrobeBackIcon.BackgroundTransparency = 1
+wardrobeBackIcon.Image = "rbxassetid://10709791437" -- Lucide arrow-left
+wardrobeBackIcon.ImageColor3 = Color3.fromRGB(205, 220, 245)
+wardrobeBackIcon.Parent = wardrobeBackBtn
+
+wardrobeBackBtn.MouseEnter:Connect(function()
+    TweenService:Create(wardrobeBackBtn, TweenInfo.new(0.18), {BackgroundColor3 = Color3.fromRGB(44, 52, 72)}):Play()
+    TweenService:Create(wardrobeBackStroke, TweenInfo.new(0.18), {Color = Color3.fromRGB(88, 166, 255)}):Play()
+    TweenService:Create(wardrobeBackIcon, TweenInfo.new(0.18), {ImageColor3 = Color3.fromRGB(255, 255, 255)}):Play()
+end)
+
+wardrobeBackBtn.MouseLeave:Connect(function()
+    TweenService:Create(wardrobeBackBtn, TweenInfo.new(0.18), {BackgroundColor3 = Color3.fromRGB(30, 34, 46)}):Play()
+    TweenService:Create(wardrobeBackStroke, TweenInfo.new(0.18), {Color = Color3.fromRGB(55, 62, 82)}):Play()
+    TweenService:Create(wardrobeBackIcon, TweenInfo.new(0.18), {ImageColor3 = Color3.fromRGB(205, 220, 245)}):Play()
+end)
+
+wardrobeCloseBtn = wardrobeBackBtn
+
 local wardrobeTitle = Instance.new("TextLabel")
-wardrobeTitle.Size = UDim2.new(1, -60, 0, 24)
-wardrobeTitle.Position = UDim2.new(0, 16, 0, 8)
+wardrobeTitle.Size = UDim2.new(1, -55, 0, 24)
+wardrobeTitle.Position = UDim2.new(0, 48, 0, 8)
 wardrobeTitle.BackgroundTransparency = 1
 wardrobeTitle.Text = "Character Cosmetics"
 wardrobeTitle.TextColor3 = Color3.fromRGB(230, 230, 230)
@@ -2554,8 +2590,8 @@ wardrobeTitle.TextXAlignment = Enum.TextXAlignment.Left
 wardrobeTitle.Parent = wardrobeMainWindow
 
 local wardrobeSubTitle = Instance.new("TextLabel")
-wardrobeSubTitle.Size = UDim2.new(1, -60, 0, 14)
-wardrobeSubTitle.Position = UDim2.new(0, 16, 0, 29)
+wardrobeSubTitle.Size = UDim2.new(1, -55, 0, 14)
+wardrobeSubTitle.Position = UDim2.new(0, 48, 0, 29)
 wardrobeSubTitle.BackgroundTransparency = 1
 wardrobeSubTitle.Text = "@" .. player.DisplayName .. " // LOOK & VISUALS"
 wardrobeSubTitle.TextColor3 = Color3.fromRGB(110, 125, 150)
@@ -2563,17 +2599,6 @@ wardrobeSubTitle.TextSize = 10
 wardrobeSubTitle.Font = Enum.Font.GothamBold
 wardrobeSubTitle.TextXAlignment = Enum.TextXAlignment.Left
 wardrobeSubTitle.Parent = wardrobeMainWindow
-
-wardrobeCloseBtn = Instance.new("TextButton")
-wardrobeCloseBtn.Size = UDim2.new(0, 28, 0, 28)
-wardrobeCloseBtn.Position = UDim2.new(1, -38, 0, 8)
-wardrobeCloseBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
-wardrobeCloseBtn.Text = "X"
-wardrobeCloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-wardrobeCloseBtn.Font = Enum.Font.GothamBold
-wardrobeCloseBtn.TextSize = 14
-wardrobeCloseBtn.Parent = wardrobeMainWindow
-Instance.new("UICorner", wardrobeCloseBtn).CornerRadius = UDim.new(0, 6)
 
 local wardrobePage = Instance.new("ScrollingFrame")
 wardrobePage.Size = UDim2.new(1, 0, 1, -50)
@@ -2619,6 +2644,21 @@ local wardrobeBarStroke = Instance.new("UIStroke", wardrobeVisualBar)
 wardrobeBarStroke.Color = Color3.fromRGB(200, 220, 255)
 wardrobeBarStroke.Transparency = 0.6
 wardrobeBarStroke.Thickness = 1.2
+
+local isHoveringWardrobeUI = false
+local function trackWardrobeHover(guiObj)
+    if not guiObj or not guiObj:IsA("GuiObject") then return end
+    guiObj.MouseEnter:Connect(function()
+        isHoveringWardrobeUI = true
+    end)
+    guiObj.MouseLeave:Connect(function()
+        isHoveringWardrobeUI = false
+    end)
+end
+
+trackWardrobeHover(wardrobeMainWindow)
+trackWardrobeHover(wardrobePage)
+trackWardrobeHover(wardrobeGrabBarContainer)
 
 -- Character Cosmetic Features Logic
 local freezeCharacter = false
@@ -3635,8 +3675,25 @@ do
         if orbitInputEndedConn then orbitInputEndedConn:Disconnect() end
         if orbitInputChangedConn then orbitInputChangedConn:Disconnect() end
 
+        local function isMousePointingAtWardrobe()
+            if isHoveringWardrobeUI then return true end
+            if not isWardrobeVisible or not wardrobePart or wardrobePart.Parent == nil then return false end
+            local mousePos = UserInputService:GetMouseLocation()
+            local unitRay = camera:ViewportPointToRay(mousePos.X, mousePos.Y)
+            local rayParams = RaycastParams.new()
+            rayParams.FilterType = Enum.RaycastFilterType.Include
+            rayParams.FilterDescendantsInstances = { wardrobePart }
+            local result = Workspace:Raycast(unitRay.Origin, unitRay.Direction * 60, rayParams)
+            return result ~= nil and result.Instance == wardrobePart
+        end
+
         orbitInputBeganConn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
             if interactionState ~= "IDLE" then return end
+            -- If mouse is clicking over the Wardrobe UI, do not initiate orbit drag
+            if isMousePointingAtWardrobe() and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+                return
+            end
+
             -- Note: MouseButton2 has gameProcessed=true because Roblox CameraModule binds RightClick, so allow MouseButton2 regardless
             if input.UserInputType == Enum.UserInputType.MouseButton2 then
                 isOrbitDragging = true
@@ -3676,7 +3733,10 @@ do
                 orbitPitch = math.clamp(orbitPitch - (deltaY * 0.35), -45, 55)
                 lastDragInputPos = input.Position
             elseif input.UserInputType == Enum.UserInputType.MouseWheel then
-                orbitRadius = math.clamp(orbitRadius - (input.Position.Z * 0.75), 3.2, 12.0)
+                -- Do NOT zoom camera if mouse is over wardrobe UI
+                if not isMousePointingAtWardrobe() then
+                    orbitRadius = math.clamp(orbitRadius - (input.Position.Z * 0.75), 3.2, 12.0)
+                end
             end
         end)
     end
@@ -3900,12 +3960,15 @@ do
         wardrobePart.Position = Vector3.new(0, 9999, 0)
         isWardrobeVisible = false
 
-        -- Smooth cinematic camera return behind player
+        -- Smooth cinematic camera return directly into First-Person view
         local root = getRootPart()
         local hum = getHumanoid()
-        local returnDuration = 0.42
+        local head = getHead()
+        local returnDuration = 0.38
         local startCam = activeWardrobeCamCF or camera.CFrame
-        local goalCam = previousCameraCFrame or (root and CFrame.lookAt(root.Position - (root.CFrame.LookVector * 6.5) + Vector3.new(0, 1.8, 0), root.Position + Vector3.new(0, 0.8, 0)) or startCam)
+        local charForward = (root and root.CFrame.LookVector) or camera.CFrame.LookVector
+        local headPos = (head and head.Position) or (root and (root.Position + Vector3.new(0, 1.5, 0))) or camera.CFrame.Position
+        local goalCam = CFrame.lookAt(headPos, headPos + (charForward * 10))
 
         local startTick = tick()
         while (tick() - startTick < returnDuration) do
@@ -3916,7 +3979,7 @@ do
         end
         activeWardrobeCamCF = goalCam
 
-        -- Cleanup custom camera bind and restore default camera
+        -- Cleanup custom camera bind and restore first person camera
         cleanupOrbitController()
         activeWardrobeCamCF = nil
         lockedCharCFrame = nil
@@ -3924,8 +3987,11 @@ do
             hum.AutoRotate = (savedAutoRotate ~= false)
         end
         camera.CameraType = previousCameraType or Enum.CameraType.Custom
+        camera.CFrame = goalCam
+
+        -- Force Roblox CameraModule into First-Person (0.5 zoom distance)
         player.CameraMinZoomDistance = 0.5
-        player.CameraMaxZoomDistance = 128
+        player.CameraMaxZoomDistance = 0.5
 
         if not freezeCharacter and root then
             root.Anchored = false
@@ -3937,6 +4003,12 @@ do
         if wasMainUIVisibleBeforeWardrobe then
             wasMainUIVisibleBeforeWardrobe = false
             summonUIWithAnimation()
+        else
+            task.defer(function()
+                if not isUIVisible then
+                    player.CameraMaxZoomDistance = 128
+                end
+            end)
         end
     end
 end
