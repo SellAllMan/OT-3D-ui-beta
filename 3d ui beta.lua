@@ -109,8 +109,10 @@ end
 local screenHudGui, hudContainer, hudStroke, speedNumLabel, unitLabel, gaugeFill
 local autoJumpBtn, autoJumpStroke, btnStatusText
 local camlockBtn, camlockStroke, camlockStatusText
-local setCamlockButtonVisible, updateCamlockButtonVisual
-local setBhopScreenWidgets
+local setCamlockButtonVisible, updateCamlockButtonVisual, triggerCamlockAction
+local setBhopScreenWidgets, triggerAutoJumpAction
+local refreshFlyButtonsVisibility
+local toggleEditWidgetPosition, stopEditingWidgetPosition
 
 local uiPart, surfaceGui, backSurfaceGui, container, sidebar, mainFrame
 local tabIndicator, titleLabel, closeBtn, minBtn, trackViewport, pagesTrack, grabBarContainer
@@ -120,6 +122,7 @@ local typewriteTitle
 
 local playerPage, visualsPage, settingsPage
 local createToggleRow, createSliderRow, createActionButton
+local createSubSlider, createSubToggle, createMovePositionRow, createKeybindRow
 
 local mobileGui, mobileFlyFrame
 local flyAttachment, flyVelocity, flyAlign, startFly, stopFly
@@ -136,318 +139,504 @@ local summonWardrobeWithAnimation, hideWardrobeWithAnimation
 local updateToggleBtnState, cleanupOrbitController, setupOrbitController
 
 -- ====================================================================
--- ScreenGui for On-Screen HUD Widgets
+-- ScreenGui for On-Screen HUD Widgets & Interactive Position Editor
 -- ====================================================================
 do
+    local showSpeedHud = true
+    local showAutoJumpBtn = true
+    local showCamlockBtn = true
+    local showFlyButtons = true
+
+    local speedHudCustomPos = UDim2.new(0, 25, 1, -85)
+    local autoJumpCustomPos = UDim2.new(1, -75, 0.65, 0)
+    local camlockCustomPos = UDim2.new(1, -75, 0.52, 0)
+    local flyButtonsCustomPos = UDim2.new(1, -75, 0.5, -60)
+
+    local activeEditingWidget = nil
+    local activeMoveBtnCallback = nil
+    local isDraggingScreenWidget = false
+    local widgetDragStartInputPos = nil
+    local widgetDragStartAbsPos = nil
+
     screenHudGui = Instance.new("ScreenGui")
-screenHudGui.Name = "SpatialUI_ScreenHUD"
-screenHudGui.ResetOnSpawn = false
-screenHudGui.DisplayOrder = 997
-screenHudGui.Parent = targetGuiParent
+    screenHudGui.Name = "SpatialUI_ScreenHUD"
+    screenHudGui.ResetOnSpawn = false
+    screenHudGui.DisplayOrder = 997
+    screenHudGui.Parent = targetGuiParent
 
--- [ 1. Speedometer HUD (Bottom Left) ]
-hudContainer = Instance.new("CanvasGroup")
-hudContainer.Name = "SpeedHUD"
-hudContainer.Size = UDim2.new(0, 165, 0, 62)
-hudContainer.Position = UDim2.new(0, 25, 1, 40)
-hudContainer.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
-hudContainer.BackgroundTransparency = 0.3
-hudContainer.BorderSizePixel = 0
-hudContainer.GroupTransparency = 1
-hudContainer.Visible = false
-hudContainer.Parent = screenHudGui
-Instance.new("UICorner", hudContainer).CornerRadius = UDim.new(0, 12)
+    -- [ 1. Speedometer HUD (Bottom Left) ]
+    hudContainer = Instance.new("CanvasGroup")
+    hudContainer.Name = "SpeedHUD"
+    hudContainer.Size = UDim2.new(0, 165, 0, 62)
+    hudContainer.Position = UDim2.new(0, 25, 1, 40)
+    hudContainer.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+    hudContainer.BackgroundTransparency = 0.3
+    hudContainer.BorderSizePixel = 0
+    hudContainer.GroupTransparency = 1
+    hudContainer.Visible = false
+    hudContainer.Parent = screenHudGui
+    Instance.new("UICorner", hudContainer).CornerRadius = UDim.new(0, 12)
 
-hudStroke = Instance.new("UIStroke", hudContainer)
-hudStroke.Color = Color3.fromRGB(50, 140, 255)
-hudStroke.Thickness = 1.4
-hudStroke.Transparency = 0.4
+    hudStroke = Instance.new("UIStroke", hudContainer)
+    hudStroke.Color = Color3.fromRGB(50, 140, 255)
+    hudStroke.Thickness = 1.4
+    hudStroke.Transparency = 0.4
 
-local hudAccentLine = Instance.new("Frame")
-hudAccentLine.Size = UDim2.new(1, 0, 0, 2)
-hudAccentLine.Position = UDim2.new(0, 0, 0, 0)
-hudAccentLine.BackgroundColor3 = Color3.fromRGB(60, 160, 255)
-hudAccentLine.BorderSizePixel = 0
-hudAccentLine.Parent = hudContainer
+    local hudAccentLine = Instance.new("Frame")
+    hudAccentLine.Size = UDim2.new(1, 0, 0, 2)
+    hudAccentLine.Position = UDim2.new(0, 0, 0, 0)
+    hudAccentLine.BackgroundColor3 = Color3.fromRGB(60, 160, 255)
+    hudAccentLine.BorderSizePixel = 0
+    hudAccentLine.Parent = hudContainer
 
-local hudTitle = Instance.new("TextLabel")
-hudTitle.Size = UDim2.new(1, -20, 0, 16)
-hudTitle.Position = UDim2.new(0, 12, 0, 7)
-hudTitle.BackgroundTransparency = 1
-hudTitle.Text = "VELOCITY // SPEED"
-hudTitle.TextColor3 = Color3.fromRGB(150, 165, 195)
-hudTitle.Font = Enum.Font.GothamBold
-hudTitle.TextSize = 10
-hudTitle.TextXAlignment = Enum.TextXAlignment.Left
-hudTitle.Parent = hudContainer
+    local hudTitle = Instance.new("TextLabel")
+    hudTitle.Size = UDim2.new(1, -20, 0, 16)
+    hudTitle.Position = UDim2.new(0, 12, 0, 7)
+    hudTitle.BackgroundTransparency = 1
+    hudTitle.Text = "VELOCITY // SPEED"
+    hudTitle.TextColor3 = Color3.fromRGB(150, 165, 195)
+    hudTitle.Font = Enum.Font.GothamBold
+    hudTitle.TextSize = 10
+    hudTitle.TextXAlignment = Enum.TextXAlignment.Left
+    hudTitle.Parent = hudContainer
 
-speedNumLabel = Instance.new("TextLabel")
-speedNumLabel.Size = UDim2.new(0, 75, 0, 28)
-speedNumLabel.Position = UDim2.new(0, 12, 0, 20)
-speedNumLabel.BackgroundTransparency = 1
-speedNumLabel.Text = "16.0"
-speedNumLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-speedNumLabel.Font = Enum.Font.GothamBold
-speedNumLabel.TextSize = 22
-speedNumLabel.TextXAlignment = Enum.TextXAlignment.Left
-speedNumLabel.Parent = hudContainer
+    speedNumLabel = Instance.new("TextLabel")
+    speedNumLabel.Size = UDim2.new(0, 75, 0, 28)
+    speedNumLabel.Position = UDim2.new(0, 12, 0, 20)
+    speedNumLabel.BackgroundTransparency = 1
+    speedNumLabel.Text = "16.0"
+    speedNumLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    speedNumLabel.Font = Enum.Font.GothamBold
+    speedNumLabel.TextSize = 22
+    speedNumLabel.TextXAlignment = Enum.TextXAlignment.Left
+    speedNumLabel.Parent = hudContainer
 
-unitLabel = Instance.new("TextLabel")
-unitLabel.Size = UDim2.new(0, 50, 0, 16)
-unitLabel.Position = UDim2.new(0, 76, 0, 28)
-unitLabel.BackgroundTransparency = 1
-unitLabel.Text = "SPS"
-unitLabel.TextColor3 = Color3.fromRGB(80, 180, 255)
-unitLabel.Font = Enum.Font.GothamBold
-unitLabel.TextSize = 11
-unitLabel.TextXAlignment = Enum.TextXAlignment.Left
-unitLabel.Parent = hudContainer
+    unitLabel = Instance.new("TextLabel")
+    unitLabel.Size = UDim2.new(0, 50, 0, 16)
+    unitLabel.Position = UDim2.new(0, 76, 0, 28)
+    unitLabel.BackgroundTransparency = 1
+    unitLabel.Text = "SPS"
+    unitLabel.TextColor3 = Color3.fromRGB(80, 180, 255)
+    unitLabel.Font = Enum.Font.GothamBold
+    unitLabel.TextSize = 11
+    unitLabel.TextXAlignment = Enum.TextXAlignment.Left
+    unitLabel.Parent = hudContainer
 
-local gaugeBackground = Instance.new("Frame")
-gaugeBackground.Size = UDim2.new(1, -24, 0, 4)
-gaugeBackground.Position = UDim2.new(0, 12, 1, -11)
-gaugeBackground.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
-gaugeBackground.BorderSizePixel = 0
-gaugeBackground.Parent = hudContainer
-Instance.new("UICorner", gaugeBackground).CornerRadius = UDim.new(1, 0)
+    local gaugeBackground = Instance.new("Frame")
+    gaugeBackground.Size = UDim2.new(1, -24, 0, 4)
+    gaugeBackground.Position = UDim2.new(0, 12, 1, -11)
+    gaugeBackground.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+    gaugeBackground.BorderSizePixel = 0
+    gaugeBackground.Parent = hudContainer
+    Instance.new("UICorner", gaugeBackground).CornerRadius = UDim.new(1, 0)
 
-gaugeFill = Instance.new("Frame")
-gaugeFill.Size = UDim2.new(0.1, 0, 1, 0)
-gaugeFill.BackgroundColor3 = Color3.fromRGB(50, 160, 255)
-gaugeFill.BorderSizePixel = 0
-gaugeFill.Parent = gaugeBackground
-Instance.new("UICorner", gaugeFill).CornerRadius = UDim.new(1, 0)
+    gaugeFill = Instance.new("Frame")
+    gaugeFill.Size = UDim2.new(0.1, 0, 1, 0)
+    gaugeFill.BackgroundColor3 = Color3.fromRGB(50, 160, 255)
+    gaugeFill.BorderSizePixel = 0
+    gaugeFill.Parent = gaugeBackground
+    Instance.new("UICorner", gaugeFill).CornerRadius = UDim.new(1, 0)
 
--- [ 2. Auto Jump Button (Right Side) ]
-autoJumpBtn = Instance.new("TextButton")
-autoJumpBtn.Name = "AutoJumpToggleBtn"
-autoJumpBtn.Size = UDim2.new(0, 56, 0, 56)
-autoJumpBtn.Position = UDim2.new(1, 30, 0.65, 0)
-autoJumpBtn.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
-autoJumpBtn.BackgroundTransparency = 0.25
-autoJumpBtn.Text = ""
-autoJumpBtn.AutoButtonColor = false
-autoJumpBtn.Visible = false
-autoJumpBtn.Parent = screenHudGui
-Instance.new("UICorner", autoJumpBtn).CornerRadius = UDim.new(0, 16)
+    -- [ 2. Auto Jump Button (Right Side) ]
+    autoJumpBtn = Instance.new("TextButton")
+    autoJumpBtn.Name = "AutoJumpToggleBtn"
+    autoJumpBtn.Size = UDim2.new(0, 56, 0, 56)
+    autoJumpBtn.Position = UDim2.new(1, 30, 0.65, 0)
+    autoJumpBtn.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+    autoJumpBtn.BackgroundTransparency = 0.25
+    autoJumpBtn.Text = ""
+    autoJumpBtn.AutoButtonColor = false
+    autoJumpBtn.Visible = false
+    autoJumpBtn.Parent = screenHudGui
+    Instance.new("UICorner", autoJumpBtn).CornerRadius = UDim.new(0, 16)
 
-autoJumpStroke = Instance.new("UIStroke", autoJumpBtn)
-autoJumpStroke.Color = Color3.fromRGB(60, 60, 80)
-autoJumpStroke.Thickness = 1.8
+    autoJumpStroke = Instance.new("UIStroke", autoJumpBtn)
+    autoJumpStroke.Color = Color3.fromRGB(60, 60, 80)
+    autoJumpStroke.Thickness = 1.8
 
-local btnTextTop = Instance.new("TextLabel")
-btnTextTop.Size = UDim2.new(1, 0, 0, 16)
-btnTextTop.Position = UDim2.new(0, 0, 0, 10)
-btnTextTop.BackgroundTransparency = 1
-btnTextTop.Text = "AUTO"
-btnTextTop.TextColor3 = Color3.fromRGB(180, 180, 200)
-btnTextTop.Font = Enum.Font.GothamBold
-btnTextTop.TextSize = 11
-btnTextTop.Parent = autoJumpBtn
+    local btnTextTop = Instance.new("TextLabel")
+    btnTextTop.Size = UDim2.new(1, 0, 0, 16)
+    btnTextTop.Position = UDim2.new(0, 0, 0, 10)
+    btnTextTop.BackgroundTransparency = 1
+    btnTextTop.Text = "AUTO"
+    btnTextTop.TextColor3 = Color3.fromRGB(180, 180, 200)
+    btnTextTop.Font = Enum.Font.GothamBold
+    btnTextTop.TextSize = 11
+    btnTextTop.Parent = autoJumpBtn
 
-btnStatusText = Instance.new("TextLabel")
-btnStatusText.Size = UDim2.new(1, 0, 0, 18)
-btnStatusText.Position = UDim2.new(0, 0, 0, 26)
-btnStatusText.BackgroundTransparency = 1
-btnStatusText.Text = "OFF"
-btnStatusText.TextColor3 = Color3.fromRGB(140, 140, 160)
-btnStatusText.Font = Enum.Font.GothamBold
-btnStatusText.TextSize = 13
-btnStatusText.Parent = autoJumpBtn
+    btnStatusText = Instance.new("TextLabel")
+    btnStatusText.Size = UDim2.new(1, 0, 0, 18)
+    btnStatusText.Position = UDim2.new(0, 0, 0, 26)
+    btnStatusText.BackgroundTransparency = 1
+    btnStatusText.Text = "OFF"
+    btnStatusText.TextColor3 = Color3.fromRGB(140, 140, 160)
+    btnStatusText.Font = Enum.Font.GothamBold
+    btnStatusText.TextSize = 13
+    btnStatusText.Parent = autoJumpBtn
 
-local function updateAutoJumpButtonVisual(active)
-    if active then
-        btnStatusText.Text = "ON"
-        btnStatusText.TextColor3 = Color3.fromRGB(45, 220, 120)
-        autoJumpStroke.Color = Color3.fromRGB(45, 220, 120)
-        TweenService:Create(autoJumpBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(20, 36, 28)}):Play()
-    else
-        btnStatusText.Text = "OFF"
-        btnStatusText.TextColor3 = Color3.fromRGB(140, 140, 160)
-        autoJumpStroke.Color = Color3.fromRGB(60, 60, 80)
-        TweenService:Create(autoJumpBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(22, 22, 28)}):Play()
+    local function updateAutoJumpButtonVisual(active)
+        if active then
+            btnStatusText.Text = "ON"
+            btnStatusText.TextColor3 = Color3.fromRGB(45, 220, 120)
+            autoJumpStroke.Color = Color3.fromRGB(45, 220, 120)
+            TweenService:Create(autoJumpBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(20, 36, 28)}):Play()
+        else
+            btnStatusText.Text = "OFF"
+            btnStatusText.TextColor3 = Color3.fromRGB(140, 140, 160)
+            autoJumpStroke.Color = Color3.fromRGB(60, 60, 80)
+            TweenService:Create(autoJumpBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(22, 22, 28)}):Play()
+        end
     end
-end
 
-autoJumpBtn.Activated:Connect(function()
-    autoJumpActive = not autoJumpActive
-    updateAutoJumpButtonVisual(autoJumpActive)
-    autoJumpBtn.Size = UDim2.new(0, 52, 0, 52)
-    TweenService:Create(autoJumpBtn, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-        Size = UDim2.new(0, 56, 0, 56)
-    }):Play()
-end)
+    triggerAutoJumpAction = function()
+        if not bhopEnabled then return end
+        autoJumpActive = not autoJumpActive
+        updateAutoJumpButtonVisual(autoJumpActive)
+        if autoJumpBtn.Visible then
+            autoJumpBtn.Size = UDim2.new(0, 52, 0, 52)
+            TweenService:Create(autoJumpBtn, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Size = UDim2.new(0, 56, 0, 56)
+            }):Play()
+        end
+    end
 
-setBhopScreenWidgets = function(visible)
-    if visible then
-        hudContainer.Visible = true
-        autoJumpBtn.Visible = true
+    autoJumpBtn.Activated:Connect(function()
+        if activeEditingWidget == "autoJump" then return end
+        triggerAutoJumpAction()
+    end)
 
-        TweenService:Create(hudContainer, TweenInfo.new(0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-            Position = UDim2.new(0, 25, 1, -85),
-            GroupTransparency = 0
-        }):Play()
+    setBhopScreenWidgets = function(visible, overrideShowAuto, overrideShowHud)
+        if overrideShowAuto ~= nil then showAutoJumpBtn = overrideShowAuto end
+        if overrideShowHud ~= nil then showSpeedHud = overrideShowHud end
 
-        TweenService:Create(autoJumpBtn, TweenInfo.new(0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-            Position = UDim2.new(1, -75, 0.65, 0)
-        }):Play()
-    else
-        local tweenLeft = TweenService:Create(hudContainer, TweenInfo.new(0.24, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-            Position = UDim2.new(0, 25, 1, 40),
-            GroupTransparency = 1
-        })
-        local tweenRight = TweenService:Create(autoJumpBtn, TweenInfo.new(0.24, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-            Position = UDim2.new(1, 30, 0.65, 0)
-        })
+        local shouldShowHud = (visible and showSpeedHud) or (activeEditingWidget == "speedHud")
+        local shouldShowAuto = (visible and showAutoJumpBtn) or (activeEditingWidget == "autoJump")
 
-        tweenLeft:Play()
-        tweenRight:Play()
+        if shouldShowHud then
+            hudContainer.Visible = true
+            TweenService:Create(hudContainer, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Position = speedHudCustomPos,
+                GroupTransparency = 0
+            }):Play()
+        else
+            local tweenLeft = TweenService:Create(hudContainer, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                GroupTransparency = 1
+            })
+            tweenLeft:Play()
+            tweenLeft.Completed:Connect(function()
+                if not ((bhopEnabled and showSpeedHud) or activeEditingWidget == "speedHud") then
+                    hudContainer.Visible = false
+                end
+            end)
+        end
 
-        tweenLeft.Completed:Connect(function()
+        if shouldShowAuto then
+            autoJumpBtn.Visible = true
+            TweenService:Create(autoJumpBtn, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Position = autoJumpCustomPos
+            }):Play()
+        else
+            autoJumpBtn.Visible = false
             if not bhopEnabled then
-                hudContainer.Visible = false
-                autoJumpBtn.Visible = false
                 autoJumpActive = false
                 updateAutoJumpButtonVisual(false)
             end
-        end)
+        end
     end
-end
 
--- [ 3. Camlock Button (Right Side) ]
-camlockBtn = Instance.new("TextButton")
-camlockBtn.Name = "CamlockTriggerBtn"
-camlockBtn.Size = UDim2.new(0, 56, 0, 56)
-camlockBtn.Position = UDim2.new(1, 30, 0.52, 0)
-camlockBtn.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
-camlockBtn.BackgroundTransparency = 0.25
-camlockBtn.Text = ""
-camlockBtn.AutoButtonColor = false
-camlockBtn.Visible = false
-camlockBtn.Parent = screenHudGui
-Instance.new("UICorner", camlockBtn).CornerRadius = UDim.new(0, 16)
+    -- [ 3. Camlock Button (Right Side) ]
+    camlockBtn = Instance.new("TextButton")
+    camlockBtn.Name = "CamlockTriggerBtn"
+    camlockBtn.Size = UDim2.new(0, 56, 0, 56)
+    camlockBtn.Position = UDim2.new(1, 30, 0.52, 0)
+    camlockBtn.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+    camlockBtn.BackgroundTransparency = 0.25
+    camlockBtn.Text = ""
+    camlockBtn.AutoButtonColor = false
+    camlockBtn.Visible = false
+    camlockBtn.Parent = screenHudGui
+    Instance.new("UICorner", camlockBtn).CornerRadius = UDim.new(0, 16)
 
-camlockStroke = Instance.new("UIStroke", camlockBtn)
-camlockStroke.Color = Color3.fromRGB(60, 60, 80)
-camlockStroke.Thickness = 1.8
+    camlockStroke = Instance.new("UIStroke", camlockBtn)
+    camlockStroke.Color = Color3.fromRGB(60, 60, 80)
+    camlockStroke.Thickness = 1.8
 
-local camlockIcon = Instance.new("ImageLabel")
-camlockIcon.Size = UDim2.new(0, 22, 0, 22)
-camlockIcon.Position = UDim2.new(0.5, -11, 0, 8)
-camlockIcon.BackgroundTransparency = 1
-camlockIcon.Image = "rbxassetid://10734898355"
-camlockIcon.ImageColor3 = Color3.fromRGB(180, 180, 200)
-camlockIcon.Parent = camlockBtn
+    local camlockIcon = Instance.new("ImageLabel")
+    camlockIcon.Size = UDim2.new(0, 22, 0, 22)
+    camlockIcon.Position = UDim2.new(0.5, -11, 0, 8)
+    camlockIcon.BackgroundTransparency = 1
+    camlockIcon.Image = "rbxassetid://10734898355"
+    camlockIcon.ImageColor3 = Color3.fromRGB(180, 180, 200)
+    camlockIcon.Parent = camlockBtn
 
-camlockStatusText = Instance.new("TextLabel")
-camlockStatusText.Size = UDim2.new(1, 0, 0, 16)
-camlockStatusText.Position = UDim2.new(0, 0, 0, 32)
-camlockStatusText.BackgroundTransparency = 1
-camlockStatusText.Text = "LOCK"
-camlockStatusText.TextColor3 = Color3.fromRGB(150, 160, 180)
-camlockStatusText.Font = Enum.Font.GothamBold
-camlockStatusText.TextSize = 11
-camlockStatusText.Parent = camlockBtn
+    camlockStatusText = Instance.new("TextLabel")
+    camlockStatusText.Size = UDim2.new(1, 0, 0, 16)
+    camlockStatusText.Position = UDim2.new(0, 0, 0, 32)
+    camlockStatusText.BackgroundTransparency = 1
+    camlockStatusText.Text = "LOCK"
+    camlockStatusText.TextColor3 = Color3.fromRGB(150, 160, 180)
+    camlockStatusText.Font = Enum.Font.GothamBold
+    camlockStatusText.TextSize = 11
+    camlockStatusText.Parent = camlockBtn
 
-updateCamlockButtonVisual = function(isLocked, targetPlayer)
-    if isLocked then
-        camlockStatusText.Text = targetPlayer and (targetPlayer.DisplayName:sub(1, 6) .. "..") or "LOCKED"
-        camlockStatusText.TextColor3 = Color3.fromRGB(255, 60, 60)
-        camlockIcon.ImageColor3 = Color3.fromRGB(255, 60, 60)
-        camlockStroke.Color = Color3.fromRGB(255, 60, 60)
-        TweenService:Create(camlockBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(42, 20, 24)}):Play()
-    else
-        camlockStatusText.Text = "LOCK"
-        camlockStatusText.TextColor3 = Color3.fromRGB(150, 160, 180)
-        camlockIcon.ImageColor3 = Color3.fromRGB(180, 180, 200)
-        camlockStroke.Color = Color3.fromRGB(60, 60, 80)
-        TweenService:Create(camlockBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(22, 22, 28)}):Play()
+    updateCamlockButtonVisual = function(isLocked, targetPlayer)
+        if isLocked then
+            camlockStatusText.Text = targetPlayer and (targetPlayer.DisplayName:sub(1, 6) .. "..") or "LOCKED"
+            camlockStatusText.TextColor3 = Color3.fromRGB(255, 60, 60)
+            camlockIcon.ImageColor3 = Color3.fromRGB(255, 60, 60)
+            camlockStroke.Color = Color3.fromRGB(255, 60, 60)
+            TweenService:Create(camlockBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(42, 20, 24)}):Play()
+        else
+            camlockStatusText.Text = "LOCK"
+            camlockStatusText.TextColor3 = Color3.fromRGB(150, 160, 180)
+            camlockIcon.ImageColor3 = Color3.fromRGB(180, 180, 200)
+            camlockStroke.Color = Color3.fromRGB(60, 60, 80)
+            TweenService:Create(camlockBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(22, 22, 28)}):Play()
+        end
     end
-end
 
-local function getNearestPlayerToCamera()
-    local myRoot = getRootPart()
-    if not myRoot then return nil end
+    local function getNearestPlayerToCamera()
+        local myRoot = getRootPart()
+        if not myRoot then return nil end
 
-    local nearestTargetPart = nil
-    local shortestDist = math.huge
-    local screenCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+        local nearestTargetPart = nil
+        local shortestDist = math.huge
+        local screenCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
 
-    for _, otherPlayer in ipairs(Players:GetPlayers()) do
-        if otherPlayer ~= player and otherPlayer.Character then
-            local targetChar = otherPlayer.Character
-            local targetHum = targetChar:FindFirstChildOfClass("Humanoid")
-            local targetHead = targetChar:FindFirstChild("Head")
+        for _, otherPlayer in ipairs(Players:GetPlayers()) do
+            if otherPlayer ~= player and otherPlayer.Character then
+                local targetChar = otherPlayer.Character
+                local targetHum = targetChar:FindFirstChildOfClass("Humanoid")
+                local targetHead = targetChar:FindFirstChild("Head")
 
-            if targetHum and targetHum.Health > 0 and targetHead then
-                local worldDistance = (targetHead.Position - myRoot.Position).Magnitude
-                if worldDistance <= CAMLOCK_MAX_DIST then
-                    local screenPos, onScreen = camera:WorldToViewportPoint(targetHead.Position)
-                    if onScreen then
-                        local crosshairDistance = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
-                        local score = crosshairDistance + (worldDistance * 0.8)
-                        if score < shortestDist then
-                            shortestDist = score
-                            nearestTargetPart = targetHead
+                if targetHum and targetHum.Health > 0 and targetHead then
+                    local worldDistance = (targetHead.Position - myRoot.Position).Magnitude
+                    if worldDistance <= CAMLOCK_MAX_DIST then
+                        local screenPos, onScreen = camera:WorldToViewportPoint(targetHead.Position)
+                        if onScreen then
+                            local crosshairDistance = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
+                            local score = crosshairDistance + (worldDistance * 0.8)
+                            if score < shortestDist then
+                                shortestDist = score
+                                nearestTargetPart = targetHead
+                            end
                         end
                     end
                 end
             end
         end
+        return nearestTargetPart
     end
-    return nearestTargetPart
-end
 
-camlockBtn.Activated:Connect(function()
-    if not isTargetLocked then
-        local target = getNearestPlayerToCamera()
-        if target then
-            lockedTargetPart = target
-            isTargetLocked = true
-            local targetPlayer = Players:GetPlayerFromCharacter(target.Parent)
-            updateCamlockButtonVisual(true, targetPlayer)
+    triggerCamlockAction = function()
+        if not camlockEnabled then return end
+        if not isTargetLocked then
+            local target = getNearestPlayerToCamera()
+            if target then
+                lockedTargetPart = target
+                isTargetLocked = true
+                local targetPlayer = Players:GetPlayerFromCharacter(target.Parent)
+                updateCamlockButtonVisual(true, targetPlayer)
+            else
+                camlockStroke.Color = Color3.fromRGB(255, 160, 40)
+                task.delay(0.25, function()
+                    if not isTargetLocked then
+                        camlockStroke.Color = Color3.fromRGB(60, 60, 80)
+                    end
+                end)
+            end
         else
-            camlockStroke.Color = Color3.fromRGB(255, 160, 40)
-            task.delay(0.25, function()
-                if not isTargetLocked then
-                    camlockStroke.Color = Color3.fromRGB(60, 60, 80)
-                end
-            end)
+            isTargetLocked = false
+            lockedTargetPart = nil
+            updateCamlockButtonVisual(false)
         end
-    else
-        isTargetLocked = false
-        lockedTargetPart = nil
-        updateCamlockButtonVisual(false)
+
+        if camlockBtn.Visible then
+            camlockBtn.Size = UDim2.new(0, 52, 0, 52)
+            TweenService:Create(camlockBtn, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Size = UDim2.new(0, 56, 0, 56)
+            }):Play()
+        end
     end
 
-    camlockBtn.Size = UDim2.new(0, 52, 0, 52)
-    TweenService:Create(camlockBtn, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-        Size = UDim2.new(0, 56, 0, 56)
-    }):Play()
-end)
+    camlockBtn.Activated:Connect(function()
+        if activeEditingWidget == "camlock" then return end
+        triggerCamlockAction()
+    end)
 
-setCamlockButtonVisible = function(visible)
-    if visible then
-        camlockBtn.Visible = true
-        TweenService:Create(camlockBtn, TweenInfo.new(0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-            Position = UDim2.new(1, -75, 0.52, 0)
-        }):Play()
-    else
-        local tween = TweenService:Create(camlockBtn, TweenInfo.new(0.24, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-            Position = UDim2.new(1, 30, 0.52, 0)
-        })
-        tween:Play()
-        tween.Completed:Connect(function()
+    setCamlockButtonVisible = function(visible, overrideShowBtn)
+        if overrideShowBtn ~= nil then
+            showCamlockBtn = overrideShowBtn
+        end
+        local shouldShow = (visible and showCamlockBtn) or (activeEditingWidget == "camlock")
+        if shouldShow then
+            camlockBtn.Visible = true
+            TweenService:Create(camlockBtn, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Position = camlockCustomPos
+            }):Play()
+        else
+            camlockBtn.Visible = false
             if not camlockEnabled then
-                camlockBtn.Visible = false
                 isTargetLocked = false
                 lockedTargetPart = nil
                 updateCamlockButtonVisual(false)
             end
-        end)
+        end
     end
-end
 
+    refreshFlyButtonsVisibility = function(overrideShowFly)
+        if overrideShowFly ~= nil then
+            showFlyButtons = overrideShowFly
+        end
+        if not mobileFlyFrame then return end
+        local shouldShow = (flyEnabled and showFlyButtons) or (activeEditingWidget == "flyBtns")
+        mobileFlyFrame.Position = flyButtonsCustomPos
+        mobileFlyFrame.Visible = shouldShow
+    end
+
+    -- [ 4. Interactive Screen Button Position Mover Overlay ]
+    local editHighlightOverlay = Instance.new("Frame")
+    editHighlightOverlay.Name = "WidgetMoveOverlay"
+    editHighlightOverlay.BackgroundTransparency = 0.75
+    editHighlightOverlay.BackgroundColor3 = Color3.fromRGB(40, 140, 255)
+    editHighlightOverlay.BorderSizePixel = 0
+    editHighlightOverlay.Visible = false
+    editHighlightOverlay.ZIndex = 50
+    editHighlightOverlay.Active = true
+    editHighlightOverlay.Parent = screenHudGui
+    Instance.new("UICorner", editHighlightOverlay).CornerRadius = UDim.new(0, 14)
+
+    local editOverlayStroke = Instance.new("UIStroke", editHighlightOverlay)
+    editOverlayStroke.Color = Color3.fromRGB(90, 210, 255)
+    editOverlayStroke.Thickness = 2.2
+
+    local editDragTag = Instance.new("TextLabel")
+    editDragTag.Size = UDim2.new(0, 110, 0, 18)
+    editDragTag.AnchorPoint = Vector2.new(0.5, 1)
+    editDragTag.Position = UDim2.new(0.5, 0, 0, -4)
+    editDragTag.BackgroundColor3 = Color3.fromRGB(20, 30, 48)
+    editDragTag.Text = "DRAG TO MOVE"
+    editDragTag.TextColor3 = Color3.fromRGB(110, 215, 255)
+    editDragTag.Font = Enum.Font.GothamBold
+    editDragTag.TextSize = 10
+    editDragTag.ZIndex = 51
+    editDragTag.Parent = editHighlightOverlay
+    Instance.new("UICorner", editDragTag).CornerRadius = UDim.new(0, 6)
+
+    local editSavePill = Instance.new("TextButton")
+    editSavePill.Size = UDim2.new(0, 68, 0, 20)
+    editSavePill.AnchorPoint = Vector2.new(0.5, 0)
+    editSavePill.Position = UDim2.new(0.5, 0, 1, 4)
+    editSavePill.BackgroundColor3 = Color3.fromRGB(40, 185, 105)
+    editSavePill.Text = "Save Pos"
+    editSavePill.TextColor3 = Color3.fromRGB(255, 255, 255)
+    editSavePill.Font = Enum.Font.GothamBold
+    editSavePill.TextSize = 10
+    editSavePill.ZIndex = 52
+    editSavePill.Parent = editHighlightOverlay
+    Instance.new("UICorner", editSavePill).CornerRadius = UDim.new(0, 6)
+
+    local function getWidgetInstance(widgetId)
+        if widgetId == "autoJump" then return autoJumpBtn
+        elseif widgetId == "speedHud" then return hudContainer
+        elseif widgetId == "camlock" then return camlockBtn
+        elseif widgetId == "flyBtns" then return mobileFlyFrame
+        end
+        return nil
+    end
+
+    local function syncOverlayToTarget()
+        local target = getWidgetInstance(activeEditingWidget)
+        if not target then
+            editHighlightOverlay.Visible = false
+            return
+        end
+        editHighlightOverlay.Size = UDim2.new(0, target.AbsoluteSize.X + 8, 0, target.AbsoluteSize.Y + 8)
+        editHighlightOverlay.Position = UDim2.new(0, target.AbsolutePosition.X - 4, 0, target.AbsolutePosition.Y - 4)
+        editHighlightOverlay.Visible = true
+    end
+
+    stopEditingWidgetPosition = function()
+        if not activeEditingWidget then return end
+        local prevCallback = activeMoveBtnCallback
+        activeEditingWidget = nil
+        activeMoveBtnCallback = nil
+        isDraggingScreenWidget = false
+        editHighlightOverlay.Visible = false
+        if prevCallback then prevCallback(false) end
+
+        setBhopScreenWidgets(bhopEnabled)
+        setCamlockButtonVisible(camlockEnabled)
+        refreshFlyButtonsVisibility()
+    end
+
+    toggleEditWidgetPosition = function(widgetId, onStateChange)
+        if activeEditingWidget == widgetId then
+            stopEditingWidgetPosition()
+            return
+        end
+        if activeEditingWidget then
+            stopEditingWidgetPosition()
+        end
+
+        activeEditingWidget = widgetId
+        activeMoveBtnCallback = onStateChange
+        if onStateChange then onStateChange(true) end
+
+        setBhopScreenWidgets(bhopEnabled)
+        setCamlockButtonVisible(camlockEnabled)
+        refreshFlyButtonsVisibility()
+
+        task.defer(syncOverlayToTarget)
+    end
+
+    editSavePill.Activated:Connect(function()
+        stopEditingWidgetPosition()
+    end)
+
+    editHighlightOverlay.InputBegan:Connect(function(input)
+        if not activeEditingWidget then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            local target = getWidgetInstance(activeEditingWidget)
+            if target then
+                isDraggingScreenWidget = true
+                widgetDragStartInputPos = input.Position
+                widgetDragStartAbsPos = target.AbsolutePosition
+            end
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if not isDraggingScreenWidget or not activeEditingWidget then return end
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            local target = getWidgetInstance(activeEditingWidget)
+            if target and widgetDragStartInputPos and widgetDragStartAbsPos then
+                local delta = input.Position - widgetDragStartInputPos
+                local vp = camera.ViewportSize
+                local newX = math.clamp(widgetDragStartAbsPos.X + delta.X, 6, math.max(6, vp.X - target.AbsoluteSize.X - 6))
+                local newY = math.clamp(widgetDragStartAbsPos.Y + delta.Y, 6, math.max(6, vp.Y - target.AbsoluteSize.Y - 6))
+                local newUDim = UDim2.new(0, newX, 0, newY)
+
+                target.Position = newUDim
+                if activeEditingWidget == "autoJump" then
+                    autoJumpCustomPos = newUDim
+                elseif activeEditingWidget == "speedHud" then
+                    speedHudCustomPos = newUDim
+                elseif activeEditingWidget == "camlock" then
+                    camlockCustomPos = newUDim
+                elseif activeEditingWidget == "flyBtns" then
+                    flyButtonsCustomPos = newUDim
+                end
+                syncOverlayToTarget()
+            end
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            isDraggingScreenWidget = false
+        end
+    end)
 end -- [End HUD Block]
 
 -- ====================================================================
@@ -674,189 +863,638 @@ visualsPage = createPageColumn(2)
 settingsPage = createPageColumn(3)
 
 -- ====================================================================
--- Universal UI Component Builder
+-- Universal UI Component Builder (Right-Click Sub-Settings & Keybinds)
 -- ====================================================================
-createToggleRow = function(parent, name, defaultState, onToggle, order)
-    local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, -32, 0, 48)
-    row.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
-    row.LayoutOrder = order or 1
-    row.Parent = parent
-    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 10)
+do
+    local registeredKeybinds = {}
+    local activeBindingEntry = nil
 
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(0.6, 0, 1, 0)
-    label.Position = UDim2.new(0, 14, 0, 0)
-    label.BackgroundTransparency = 1
-    label.Text = name
-    label.TextColor3 = Color3.fromRGB(220, 220, 220)
-    label.Font = Enum.Font.GothamBold
-    label.TextSize = 14
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = row
-
-    local toggleBtn = Instance.new("TextButton")
-    toggleBtn.Size = UDim2.new(0, 75, 0, 28)
-    toggleBtn.Position = UDim2.new(1, -85, 0.5, -14)
-    toggleBtn.BackgroundColor3 = defaultState and Color3.fromRGB(45, 180, 100) or Color3.fromRGB(60, 60, 75)
-    toggleBtn.Text = defaultState and "ON" or "OFF"
-    toggleBtn.TextColor3 = defaultState and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
-    toggleBtn.Font = Enum.Font.GothamBold
-    toggleBtn.TextSize = 13
-    toggleBtn.Parent = row
-    Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 6)
-
-    local isToggled = defaultState
-    toggleBtn.Activated:Connect(function()
-        if interactionState ~= "IDLE" then return end
-        isToggled = not isToggled
-        if isToggled then
-            toggleBtn.Text = "ON"
-            TweenService:Create(toggleBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(45, 180, 100), TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
-        else
-            toggleBtn.Text = "OFF"
-            TweenService:Create(toggleBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(60, 60, 75), TextColor3 = Color3.fromRGB(200, 200, 200)}):Play()
-        end
-        onToggle(isToggled)
-    end)
-    return row
-end
-
-createSliderRow = function(parent, name, minVal, maxVal, defaultVal, onSliderChange, order)
-    local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, -32, 0, 65)
-    row.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
-    row.LayoutOrder = order or 1
-    row.Parent = parent
-    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 10)
-
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(0.5, 0, 0, 25)
-    label.Position = UDim2.new(0, 14, 0, 8)
-    label.BackgroundTransparency = 1
-    label.Text = name
-    label.TextColor3 = Color3.fromRGB(220, 220, 220)
-    label.Font = Enum.Font.GothamBold
-    label.TextSize = 14
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = row
-
-    local valLabel = Instance.new("TextLabel")
-    valLabel.Size = UDim2.new(0, 60, 0, 25)
-    valLabel.Position = UDim2.new(1, -72, 0, 8)
-    valLabel.BackgroundTransparency = 1
-    valLabel.Text = tostring(defaultVal)
-    valLabel.TextColor3 = Color3.fromRGB(150, 200, 255)
-    valLabel.Font = Enum.Font.GothamBold
-    valLabel.TextSize = 14
-    valLabel.Parent = row
-
-    local sliderBar = Instance.new("Frame")
-    sliderBar.Size = UDim2.new(1, -28, 0, 6)
-    sliderBar.Position = UDim2.new(0, 14, 0, 42)
-    sliderBar.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
-    sliderBar.BorderSizePixel = 0
-    sliderBar.Parent = row
-    Instance.new("UICorner", sliderBar).CornerRadius = UDim.new(1, 0)
-
-    local initialPercent = (defaultVal - minVal) / (maxVal - minVal)
-    local sliderFill = Instance.new("Frame")
-    sliderFill.Size = UDim2.new(initialPercent, 0, 1, 0)
-    sliderFill.BackgroundColor3 = Color3.fromRGB(60, 140, 255)
-    sliderFill.BorderSizePixel = 0
-    sliderFill.Parent = sliderBar
-    Instance.new("UICorner", sliderFill).CornerRadius = UDim.new(1, 0)
-
-    local sliderKnob = Instance.new("TextButton")
-    sliderKnob.Name = "Knob"
-    sliderKnob.Size = UDim2.new(0, 20, 0, 20)
-    sliderKnob.AnchorPoint = Vector2.new(0.5, 0.5)
-    sliderKnob.Position = UDim2.new(initialPercent, 0, 0.5, 0)
-    sliderKnob.BackgroundColor3 = Color3.fromRGB(240, 245, 255)
-    sliderKnob.Text = ""
-    sliderKnob.AutoButtonColor = false
-    sliderKnob.Parent = sliderBar
-    Instance.new("UICorner", sliderKnob).CornerRadius = UDim.new(1, 0)
-
-    local isHoldingKnob = false
-    local knobTouchId = nil
-
-    local function setSliderValue(canvasX)
-        local rel = math.clamp((canvasX - sliderBar.AbsolutePosition.X) / sliderBar.AbsoluteSize.X, 0, 1)
-        sliderFill.Size = UDim2.new(rel, 0, 1, 0)
-        sliderKnob.Position = UDim2.new(rel, 0, 0.5, 0)
-        local resultVal = math.floor(minVal + (maxVal - minVal) * rel)
-        valLabel.Text = tostring(resultVal)
-        onSliderChange(resultVal)
+    local function formatKeyName(keyCode)
+        if not keyCode then return "None" end
+        return keyCode.Name or "None"
     end
 
-    sliderKnob.InputBegan:Connect(function(input)
-        if interactionState == "IDLE" and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
-            interactionState = "SLIDING"
-            isHoldingKnob = true
-            knobTouchId = input
-            TweenService:Create(sliderKnob, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(100, 200, 255)}):Play()
-        end
-    end)
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+        if UserInputService:GetFocusedTextBox() then return end
 
-    sliderKnob.InputChanged:Connect(function(input)
-        if isHoldingKnob and (input == knobTouchId or input.UserInputType == Enum.UserInputType.MouseMovement) then
-            setSliderValue(input.Position.X)
+        if activeBindingEntry then
+            local entry = activeBindingEntry
+            activeBindingEntry = nil
+            if input.KeyCode == Enum.KeyCode.Backspace or input.KeyCode == Enum.KeyCode.Delete or input.KeyCode == Enum.KeyCode.Escape then
+                entry.key = nil
+            elseif input.KeyCode ~= Enum.KeyCode.Unknown then
+                entry.key = input.KeyCode
+            end
+            entry.updateVisual(false)
+            return
         end
-    end)
 
-    local function releaseKnob(input)
-        if isHoldingKnob and (input == knobTouchId or input.UserInputType == Enum.UserInputType.MouseButton1) then
-            isHoldingKnob = false
-            knobTouchId = nil
-            TweenService:Create(sliderKnob, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(240, 245, 255)}):Play()
-            if interactionState == "SLIDING" then
-                interactionState = "IDLE"
+        if gameProcessed then return end
+        for _, entry in ipairs(registeredKeybinds) do
+            if entry.key and entry.key == input.KeyCode and entry.onTrigger then
+                entry.onTrigger()
             end
         end
+    end)
+
+    createSubSlider = function(parent, name, minVal, maxVal, defaultVal, onSliderChange, order)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, 0, 0, 50)
+        row.BackgroundColor3 = Color3.fromRGB(26, 26, 36)
+        row.LayoutOrder = order or 1
+        row.Parent = parent
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(0.6, 0, 0, 20)
+        label.Position = UDim2.new(0, 10, 0, 5)
+        label.BackgroundTransparency = 1
+        label.Text = name
+        label.TextColor3 = Color3.fromRGB(195, 205, 225)
+        label.Font = Enum.Font.GothamBold
+        label.TextSize = 12
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Parent = row
+
+        local valLabel = Instance.new("TextLabel")
+        valLabel.Size = UDim2.new(0, 55, 0, 20)
+        valLabel.Position = UDim2.new(1, -65, 0, 5)
+        valLabel.BackgroundTransparency = 1
+        valLabel.Text = tostring(defaultVal)
+        valLabel.TextColor3 = Color3.fromRGB(120, 195, 255)
+        valLabel.Font = Enum.Font.GothamBold
+        valLabel.TextSize = 12
+        valLabel.TextXAlignment = Enum.TextXAlignment.Right
+        valLabel.Parent = row
+
+        local sliderBar = Instance.new("Frame")
+        sliderBar.Size = UDim2.new(1, -20, 0, 5)
+        sliderBar.Position = UDim2.new(0, 10, 0, 34)
+        sliderBar.BackgroundColor3 = Color3.fromRGB(42, 42, 58)
+        sliderBar.BorderSizePixel = 0
+        sliderBar.Parent = row
+        Instance.new("UICorner", sliderBar).CornerRadius = UDim.new(1, 0)
+
+        local initialPercent = math.clamp((defaultVal - minVal) / math.max(1, maxVal - minVal), 0, 1)
+        local sliderFill = Instance.new("Frame")
+        sliderFill.Size = UDim2.new(initialPercent, 0, 1, 0)
+        sliderFill.BackgroundColor3 = Color3.fromRGB(60, 140, 255)
+        sliderFill.BorderSizePixel = 0
+        sliderFill.Parent = sliderBar
+        Instance.new("UICorner", sliderFill).CornerRadius = UDim.new(1, 0)
+
+        local sliderKnob = Instance.new("TextButton")
+        sliderKnob.Name = "Knob"
+        sliderKnob.Size = UDim2.new(0, 16, 0, 16)
+        sliderKnob.AnchorPoint = Vector2.new(0.5, 0.5)
+        sliderKnob.Position = UDim2.new(initialPercent, 0, 0.5, 0)
+        sliderKnob.BackgroundColor3 = Color3.fromRGB(240, 245, 255)
+        sliderKnob.Text = ""
+        sliderKnob.AutoButtonColor = false
+        sliderKnob.Parent = sliderBar
+        Instance.new("UICorner", sliderKnob).CornerRadius = UDim.new(1, 0)
+
+        local isHoldingKnob = false
+        local knobTouchId = nil
+
+        local function setSliderValue(canvasX)
+            local rel = math.clamp((canvasX - sliderBar.AbsolutePosition.X) / math.max(1, sliderBar.AbsoluteSize.X), 0, 1)
+            sliderFill.Size = UDim2.new(rel, 0, 1, 0)
+            sliderKnob.Position = UDim2.new(rel, 0, 0.5, 0)
+            local resultVal = math.floor(minVal + (maxVal - minVal) * rel)
+            valLabel.Text = tostring(resultVal)
+            onSliderChange(resultVal)
+        end
+
+        sliderKnob.InputBegan:Connect(function(input)
+            if interactionState == "IDLE" and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+                interactionState = "SLIDING"
+                isHoldingKnob = true
+                knobTouchId = input
+                TweenService:Create(sliderKnob, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(100, 200, 255)}):Play()
+            end
+        end)
+
+        sliderKnob.InputChanged:Connect(function(input)
+            if isHoldingKnob and (input == knobTouchId or input.UserInputType == Enum.UserInputType.MouseMovement) then
+                setSliderValue(input.Position.X)
+            end
+        end)
+
+        local function releaseKnob(input)
+            if isHoldingKnob and (input == knobTouchId or input.UserInputType == Enum.UserInputType.MouseButton1) then
+                isHoldingKnob = false
+                knobTouchId = nil
+                TweenService:Create(sliderKnob, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(240, 245, 255)}):Play()
+                if interactionState == "SLIDING" then
+                    interactionState = "IDLE"
+                end
+            end
+        end
+
+        sliderKnob.InputEnded:Connect(releaseKnob)
+        UserInputService.InputEnded:Connect(releaseKnob)
+        return row
     end
 
-    sliderKnob.InputEnded:Connect(releaseKnob)
-    UserInputService.InputEnded:Connect(releaseKnob)
-    return row
-end
+    createSubToggle = function(parent, name, defaultState, onToggle, order)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, 0, 0, 36)
+        row.BackgroundColor3 = Color3.fromRGB(26, 26, 36)
+        row.LayoutOrder = order or 1
+        row.Parent = parent
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 
-createActionButton = function(parent, name, btnText, onClick, order)
-    local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, -32, 0, 48)
-    row.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
-    row.LayoutOrder = order or 1
-    row.Parent = parent
-    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 10)
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(0.65, 0, 1, 0)
+        label.Position = UDim2.new(0, 10, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = name
+        label.TextColor3 = Color3.fromRGB(195, 205, 225)
+        label.Font = Enum.Font.GothamBold
+        label.TextSize = 12
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Parent = row
 
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(0.6, 0, 1, 0)
-    label.Position = UDim2.new(0, 14, 0, 0)
-    label.BackgroundTransparency = 1
-    label.Text = name
-    label.TextColor3 = Color3.fromRGB(220, 220, 220)
-    label.Font = Enum.Font.GothamBold
-    label.TextSize = 14
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = row
+        local toggleBtn = Instance.new("TextButton")
+        toggleBtn.Size = UDim2.new(0, 62, 0, 24)
+        toggleBtn.Position = UDim2.new(1, -70, 0.5, -12)
+        toggleBtn.BackgroundColor3 = defaultState and Color3.fromRGB(45, 180, 100) or Color3.fromRGB(55, 55, 70)
+        toggleBtn.Text = defaultState and "ON" or "OFF"
+        toggleBtn.TextColor3 = defaultState and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(190, 190, 205)
+        toggleBtn.Font = Enum.Font.GothamBold
+        toggleBtn.TextSize = 11
+        toggleBtn.Parent = row
+        Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 6)
 
-    local actionBtn = Instance.new("TextButton")
-    actionBtn.Size = UDim2.new(0, 85, 0, 28)
-    actionBtn.Position = UDim2.new(1, -95, 0.5, -14)
-    actionBtn.BackgroundColor3 = Color3.fromRGB(50, 120, 240)
-    actionBtn.Text = btnText
-    actionBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    actionBtn.Font = Enum.Font.GothamBold
-    actionBtn.TextSize = 12
-    actionBtn.Parent = row
-    Instance.new("UICorner", actionBtn).CornerRadius = UDim.new(0, 6)
+        local isToggled = defaultState
+        toggleBtn.Activated:Connect(function()
+            if interactionState ~= "IDLE" then return end
+            isToggled = not isToggled
+            if isToggled then
+                toggleBtn.Text = "ON"
+                TweenService:Create(toggleBtn, TweenInfo.new(0.18), {BackgroundColor3 = Color3.fromRGB(45, 180, 100), TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
+            else
+                toggleBtn.Text = "OFF"
+                TweenService:Create(toggleBtn, TweenInfo.new(0.18), {BackgroundColor3 = Color3.fromRGB(55, 55, 70), TextColor3 = Color3.fromRGB(190, 190, 205)}):Play()
+            end
+            onToggle(isToggled)
+        end)
+        return row
+    end
 
-    actionBtn.Activated:Connect(function()
-        if interactionState ~= "IDLE" then return end
-        onClick()
-    end)
-    return row
-end
+    createMovePositionRow = function(parent, name, widgetId, order)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, 0, 0, 36)
+        row.BackgroundColor3 = Color3.fromRGB(26, 26, 36)
+        row.LayoutOrder = order or 1
+        row.Parent = parent
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(0.6, 0, 1, 0)
+        label.Position = UDim2.new(0, 10, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = name
+        label.TextColor3 = Color3.fromRGB(195, 205, 225)
+        label.Font = Enum.Font.GothamBold
+        label.TextSize = 12
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Parent = row
+
+        local moveBtn = Instance.new("TextButton")
+        moveBtn.Size = UDim2.new(0, 82, 0, 24)
+        moveBtn.Position = UDim2.new(1, -90, 0.5, -12)
+        moveBtn.BackgroundColor3 = Color3.fromRGB(50, 115, 220)
+        moveBtn.Text = "Move Pos"
+        moveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        moveBtn.Font = Enum.Font.GothamBold
+        moveBtn.TextSize = 11
+        moveBtn.Parent = row
+        Instance.new("UICorner", moveBtn).CornerRadius = UDim.new(0, 6)
+
+        local function updateMoveBtnVisual(editing)
+            if editing then
+                moveBtn.Text = "Save Pos"
+                TweenService:Create(moveBtn, TweenInfo.new(0.18), {BackgroundColor3 = Color3.fromRGB(40, 185, 105)}):Play()
+            else
+                moveBtn.Text = "Move Pos"
+                TweenService:Create(moveBtn, TweenInfo.new(0.18), {BackgroundColor3 = Color3.fromRGB(50, 115, 220)}):Play()
+            end
+        end
+
+        moveBtn.Activated:Connect(function()
+            if interactionState ~= "IDLE" then return end
+            toggleEditWidgetPosition(widgetId, updateMoveBtnVisual)
+        end)
+        return row
+    end
+
+    createKeybindRow = function(parent, name, defaultKeyCode, onTrigger, order)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, 0, 0, 36)
+        row.BackgroundColor3 = Color3.fromRGB(26, 26, 36)
+        row.LayoutOrder = order or 1
+        row.Parent = parent
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(0.58, 0, 1, 0)
+        label.Position = UDim2.new(0, 10, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = name
+        label.TextColor3 = Color3.fromRGB(195, 205, 225)
+        label.Font = Enum.Font.GothamBold
+        label.TextSize = 12
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Parent = row
+
+        local keyBtn = Instance.new("TextButton")
+        keyBtn.Size = UDim2.new(0, 88, 0, 24)
+        keyBtn.Position = UDim2.new(1, -96, 0.5, -12)
+        keyBtn.BackgroundColor3 = Color3.fromRGB(40, 42, 56)
+        keyBtn.Text = "[ " .. formatKeyName(defaultKeyCode) .. " ]"
+        keyBtn.TextColor3 = Color3.fromRGB(150, 205, 255)
+        keyBtn.Font = Enum.Font.GothamBold
+        keyBtn.TextSize = 11
+        keyBtn.Parent = row
+        Instance.new("UICorner", keyBtn).CornerRadius = UDim.new(0, 6)
+
+        local keyStroke = Instance.new("UIStroke", keyBtn)
+        keyStroke.Color = Color3.fromRGB(70, 85, 115)
+        keyStroke.Thickness = 1
+
+        local entry = {
+            key = defaultKeyCode,
+            onTrigger = onTrigger,
+            updateVisual = nil
+        }
+
+        entry.updateVisual = function(listening)
+            if listening then
+                keyBtn.Text = "[ Press Key ]"
+                keyBtn.TextColor3 = Color3.fromRGB(255, 215, 90)
+                keyStroke.Color = Color3.fromRGB(255, 190, 60)
+                TweenService:Create(keyBtn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(60, 48, 28)}):Play()
+            else
+                keyBtn.Text = "[ " .. formatKeyName(entry.key) .. " ]"
+                keyBtn.TextColor3 = entry.key and Color3.fromRGB(150, 205, 255) or Color3.fromRGB(160, 165, 180)
+                keyStroke.Color = entry.key and Color3.fromRGB(75, 125, 195) or Color3.fromRGB(65, 70, 90)
+                TweenService:Create(keyBtn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(40, 42, 56)}):Play()
+            end
+        end
+
+        entry.updateVisual(false)
+        table.insert(registeredKeybinds, entry)
+
+        keyBtn.Activated:Connect(function()
+            if interactionState ~= "IDLE" then return end
+            if activeBindingEntry == entry then
+                activeBindingEntry = nil
+                entry.updateVisual(false)
+            else
+                if activeBindingEntry then
+                    activeBindingEntry.updateVisual(false)
+                end
+                activeBindingEntry = entry
+                entry.updateVisual(true)
+            end
+        end)
+
+        return row
+    end
+
+    createToggleRow = function(parent, name, defaultState, onToggle, order, setupSubSettings)
+        local wrapper = Instance.new("Frame")
+        wrapper.Size = UDim2.new(1, -32, 0, 48)
+        wrapper.BackgroundTransparency = 1
+        wrapper.ClipsDescendants = true
+        wrapper.LayoutOrder = order or 1
+        wrapper.Parent = parent
+
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, 0, 0, 48)
+        row.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
+        row.Parent = wrapper
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 10)
+
+        local rowStroke = Instance.new("UIStroke", row)
+        rowStroke.Color = Color3.fromRGB(55, 60, 80)
+        rowStroke.Thickness = 1.2
+        rowStroke.Transparency = 1
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(0.58, 0, 1, 0)
+        label.Position = UDim2.new(0, 14, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = name
+        label.TextColor3 = Color3.fromRGB(220, 220, 220)
+        label.Font = Enum.Font.GothamBold
+        label.TextSize = 14
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.ZIndex = 3
+        label.Parent = row
+
+        local toggleBtn = Instance.new("TextButton")
+        toggleBtn.Size = UDim2.new(0, 75, 0, 28)
+        toggleBtn.Position = UDim2.new(1, -85, 0.5, -14)
+        toggleBtn.BackgroundColor3 = defaultState and Color3.fromRGB(45, 180, 100) or Color3.fromRGB(60, 60, 75)
+        toggleBtn.Text = defaultState and "ON" or "OFF"
+        toggleBtn.TextColor3 = defaultState and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
+        toggleBtn.Font = Enum.Font.GothamBold
+        toggleBtn.TextSize = 13
+        toggleBtn.ZIndex = 4
+        toggleBtn.Parent = row
+        Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 6)
+
+        local isToggled = defaultState
+        local function setToggleState(newState)
+            isToggled = newState
+            if isToggled then
+                toggleBtn.Text = "ON"
+                TweenService:Create(toggleBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(45, 180, 100), TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
+            else
+                toggleBtn.Text = "OFF"
+                TweenService:Create(toggleBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(60, 60, 75), TextColor3 = Color3.fromRGB(200, 200, 200)}):Play()
+            end
+            onToggle(isToggled)
+        end
+
+        toggleBtn.Activated:Connect(function()
+            if interactionState ~= "IDLE" then return end
+            setToggleState(not isToggled)
+        end)
+
+        local rowController = {
+            frame = wrapper,
+            toggle = function()
+                setToggleState(not isToggled)
+            end,
+            setState = setToggleState,
+            getState = function() return isToggled end
+        }
+
+        if setupSubSettings then
+            -- Right-Click Hitbox & Settings Indicator Badge
+            local rightClickCapture = Instance.new("TextButton")
+            rightClickCapture.Name = "RightClickSettingsTrigger"
+            rightClickCapture.Size = UDim2.new(1, 0, 1, 0)
+            rightClickCapture.BackgroundTransparency = 1
+            rightClickCapture.Text = ""
+            rightClickCapture.AutoButtonColor = false
+            rightClickCapture.ZIndex = 2
+            rightClickCapture.Parent = row
+
+            local gearBadge = Instance.new("TextButton")
+            gearBadge.Name = "SettingsExpandBadge"
+            gearBadge.Size = UDim2.new(0, 28, 0, 24)
+            gearBadge.Position = UDim2.new(1, -118, 0.5, -12)
+            gearBadge.BackgroundColor3 = Color3.fromRGB(36, 38, 52)
+            gearBadge.Text = "▾"
+            gearBadge.TextColor3 = Color3.fromRGB(145, 165, 205)
+            gearBadge.Font = Enum.Font.GothamBold
+            gearBadge.TextSize = 13
+            gearBadge.ZIndex = 4
+            gearBadge.Parent = row
+            Instance.new("UICorner", gearBadge).CornerRadius = UDim.new(0, 6)
+
+            local subDrawer = Instance.new("Frame")
+            subDrawer.Name = "SubSettingsDrawer"
+            subDrawer.Size = UDim2.new(1, -12, 0, 0)
+            subDrawer.Position = UDim2.new(0, 6, 0, 52)
+            subDrawer.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+            subDrawer.BorderSizePixel = 0
+            subDrawer.Parent = wrapper
+            Instance.new("UICorner", subDrawer).CornerRadius = UDim.new(0, 9)
+
+            local subDrawerStroke = Instance.new("UIStroke", subDrawer)
+            subDrawerStroke.Color = Color3.fromRGB(50, 95, 175)
+            subDrawerStroke.Thickness = 1
+            subDrawerStroke.Transparency = 0.45
+
+            local accentBar = Instance.new("Frame")
+            accentBar.Size = UDim2.new(0, 3, 1, -14)
+            accentBar.Position = UDim2.new(0, 5, 0, 7)
+            accentBar.BackgroundColor3 = Color3.fromRGB(55, 140, 255)
+            accentBar.BorderSizePixel = 0
+            accentBar.Parent = subDrawer
+            Instance.new("UICorner", accentBar).CornerRadius = UDim.new(1, 0)
+
+            local subContent = Instance.new("Frame")
+            subContent.Name = "SubContent"
+            subContent.Size = UDim2.new(1, -20, 1, 0)
+            subContent.Position = UDim2.new(0, 13, 0, 0)
+            subContent.BackgroundTransparency = 1
+            subContent.Parent = subDrawer
+
+            local subLayout = Instance.new("UIListLayout")
+            subLayout.Padding = UDim.new(0, 6)
+            subLayout.SortOrder = Enum.SortOrder.LayoutOrder
+            subLayout.Parent = subContent
+
+            local subPad = Instance.new("UIPadding")
+            subPad.PaddingTop = UDim.new(0, 8)
+            subPad.PaddingBottom = UDim.new(0, 8)
+            subPad.Parent = subContent
+
+            setupSubSettings(subContent, rowController)
+
+            local isExpanded = false
+            local lastRightClickTick = 0
+
+            local function toggleSubSettings()
+                if interactionState ~= "IDLE" then return end
+                isExpanded = not isExpanded
+                local contentHeight = subLayout.AbsoluteContentSize.Y + 16
+                subDrawer.Size = UDim2.new(1, -12, 0, contentHeight)
+
+                if isExpanded then
+                    gearBadge.Text = "▴"
+                    TweenService:Create(gearBadge, TweenInfo.new(0.2), {
+                        BackgroundColor3 = Color3.fromRGB(50, 120, 240),
+                        TextColor3 = Color3.fromRGB(255, 255, 255)
+                    }):Play()
+                    TweenService:Create(rowStroke, TweenInfo.new(0.2), {
+                        Transparency = 0.25,
+                        Color = Color3.fromRGB(65, 140, 255)
+                    }):Play()
+                    TweenService:Create(wrapper, TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                        Size = UDim2.new(1, -32, 0, 48 + contentHeight + 6)
+                    }):Play()
+                else
+                    gearBadge.Text = "▾"
+                    TweenService:Create(gearBadge, TweenInfo.new(0.2), {
+                        BackgroundColor3 = Color3.fromRGB(36, 38, 52),
+                        TextColor3 = Color3.fromRGB(145, 165, 205)
+                    }):Play()
+                    TweenService:Create(rowStroke, TweenInfo.new(0.2), {
+                        Transparency = 1
+                    }):Play()
+                    TweenService:Create(wrapper, TweenInfo.new(0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                        Size = UDim2.new(1, -32, 0, 48)
+                    }):Play()
+                end
+            end
+
+            local function onRightClickAttempt()
+                local now = tick()
+                if now - lastRightClickTick < 0.15 then return end
+                lastRightClickTick = now
+                toggleSubSettings()
+            end
+
+            rightClickCapture.MouseButton2Click:Connect(onRightClickAttempt)
+            toggleBtn.MouseButton2Click:Connect(onRightClickAttempt)
+            gearBadge.MouseButton2Click:Connect(onRightClickAttempt)
+            gearBadge.Activated:Connect(onRightClickAttempt)
+
+            row.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton2 then
+                    onRightClickAttempt()
+                end
+            end)
+        end
+
+        return wrapper, rowController
+    end
+
+    createSliderRow = function(parent, name, minVal, maxVal, defaultVal, onSliderChange, order)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, -32, 0, 65)
+        row.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
+        row.LayoutOrder = order or 1
+        row.Parent = parent
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 10)
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(0.5, 0, 0, 25)
+        label.Position = UDim2.new(0, 14, 0, 8)
+        label.BackgroundTransparency = 1
+        label.Text = name
+        label.TextColor3 = Color3.fromRGB(220, 220, 220)
+        label.Font = Enum.Font.GothamBold
+        label.TextSize = 14
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Parent = row
+
+        local valLabel = Instance.new("TextLabel")
+        valLabel.Size = UDim2.new(0, 60, 0, 25)
+        valLabel.Position = UDim2.new(1, -72, 0, 8)
+        valLabel.BackgroundTransparency = 1
+        valLabel.Text = tostring(defaultVal)
+        valLabel.TextColor3 = Color3.fromRGB(150, 200, 255)
+        valLabel.Font = Enum.Font.GothamBold
+        valLabel.TextSize = 14
+        valLabel.Parent = row
+
+        local sliderBar = Instance.new("Frame")
+        sliderBar.Size = UDim2.new(1, -28, 0, 6)
+        sliderBar.Position = UDim2.new(0, 14, 0, 42)
+        sliderBar.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+        sliderBar.BorderSizePixel = 0
+        sliderBar.Parent = row
+        Instance.new("UICorner", sliderBar).CornerRadius = UDim.new(1, 0)
+
+        local initialPercent = (defaultVal - minVal) / (maxVal - minVal)
+        local sliderFill = Instance.new("Frame")
+        sliderFill.Size = UDim2.new(initialPercent, 0, 1, 0)
+        sliderFill.BackgroundColor3 = Color3.fromRGB(60, 140, 255)
+        sliderFill.BorderSizePixel = 0
+        sliderFill.Parent = sliderBar
+        Instance.new("UICorner", sliderFill).CornerRadius = UDim.new(1, 0)
+
+        local sliderKnob = Instance.new("TextButton")
+        sliderKnob.Name = "Knob"
+        sliderKnob.Size = UDim2.new(0, 20, 0, 20)
+        sliderKnob.AnchorPoint = Vector2.new(0.5, 0.5)
+        sliderKnob.Position = UDim2.new(initialPercent, 0, 0.5, 0)
+        sliderKnob.BackgroundColor3 = Color3.fromRGB(240, 245, 255)
+        sliderKnob.Text = ""
+        sliderKnob.AutoButtonColor = false
+        sliderKnob.Parent = sliderBar
+        Instance.new("UICorner", sliderKnob).CornerRadius = UDim.new(1, 0)
+
+        local isHoldingKnob = false
+        local knobTouchId = nil
+
+        local function setSliderValue(canvasX)
+            local rel = math.clamp((canvasX - sliderBar.AbsolutePosition.X) / sliderBar.AbsoluteSize.X, 0, 1)
+            sliderFill.Size = UDim2.new(rel, 0, 1, 0)
+            sliderKnob.Position = UDim2.new(rel, 0, 0.5, 0)
+            local resultVal = math.floor(minVal + (maxVal - minVal) * rel)
+            valLabel.Text = tostring(resultVal)
+            onSliderChange(resultVal)
+        end
+
+        sliderKnob.InputBegan:Connect(function(input)
+            if interactionState == "IDLE" and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+                interactionState = "SLIDING"
+                isHoldingKnob = true
+                knobTouchId = input
+                TweenService:Create(sliderKnob, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(100, 200, 255)}):Play()
+            end
+        end)
+
+        sliderKnob.InputChanged:Connect(function(input)
+            if isHoldingKnob and (input == knobTouchId or input.UserInputType == Enum.UserInputType.MouseMovement) then
+                setSliderValue(input.Position.X)
+            end
+        end)
+
+        local function releaseKnob(input)
+            if isHoldingKnob and (input == knobTouchId or input.UserInputType == Enum.UserInputType.MouseButton1) then
+                isHoldingKnob = false
+                knobTouchId = nil
+                TweenService:Create(sliderKnob, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(240, 245, 255)}):Play()
+                if interactionState == "SLIDING" then
+                    interactionState = "IDLE"
+                end
+            end
+        end
+
+        sliderKnob.InputEnded:Connect(releaseKnob)
+        UserInputService.InputEnded:Connect(releaseKnob)
+        return row
+    end
+
+    createActionButton = function(parent, name, btnText, onClick, order)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, -32, 0, 48)
+        row.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
+        row.LayoutOrder = order or 1
+        row.Parent = parent
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 10)
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(0.6, 0, 1, 0)
+        label.Position = UDim2.new(0, 14, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = name
+        label.TextColor3 = Color3.fromRGB(220, 220, 220)
+        label.Font = Enum.Font.GothamBold
+        label.TextSize = 14
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Parent = row
+
+        local actionBtn = Instance.new("TextButton")
+        actionBtn.Size = UDim2.new(0, 85, 0, 28)
+        actionBtn.Position = UDim2.new(1, -95, 0.5, -14)
+        actionBtn.BackgroundColor3 = Color3.fromRGB(50, 120, 240)
+        actionBtn.Text = btnText
+        actionBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        actionBtn.Font = Enum.Font.GothamBold
+        actionBtn.TextSize = 12
+        actionBtn.Parent = row
+        Instance.new("UICorner", actionBtn).CornerRadius = UDim.new(0, 6)
+
+        actionBtn.Activated:Connect(function()
+            if interactionState ~= "IDLE" then return end
+            onClick()
+        end)
+        return row
+    end
+end -- [End 3D UI Component Builder Block]
 
 end -- [End 3D UI Block]
 
@@ -866,7 +1504,7 @@ end -- [End 3D UI Block]
 do
     mobileGui = Instance.new("ScreenGui")
 mobileGui.ResetOnSpawn = false
-mobileGui.DisplayOrder = 998
+mobileGui.DisplayOrder = 996
 mobileGui.Parent = targetGuiParent
 
 mobileFlyFrame = Instance.new("Frame")
@@ -897,8 +1535,8 @@ local function createMobileFlyBtn(name, text, posY)
     return btn
 end
 
-local btnFlyUp = createMobileFlyBtn("FlyUp", "â–²", 0)
-local btnFlyDown = createMobileFlyBtn("FlyDown", "â–¼", 60)
+local btnFlyUp = createMobileFlyBtn("FlyUp", "▲", 0)
+local btnFlyDown = createMobileFlyBtn("FlyDown", "▼", 60)
 
 btnFlyUp.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -954,7 +1592,7 @@ do
     flyAlign.Responsiveness = 200
     flyAlign.Parent = root
 
-    mobileFlyFrame.Visible = true
+    refreshFlyButtonsVisibility()
 end
 
 stopFly = function()
@@ -965,7 +1603,7 @@ stopFly = function()
     if flyAlign then flyAlign:Destroy() end
     if flyAttachment then flyAttachment:Destroy() end
 
-    mobileFlyFrame.Visible = false
+    refreshFlyButtonsVisibility()
     mobileFlyUp = false
     mobileFlyDown = false
 end
@@ -1040,60 +1678,101 @@ player.Idled:Connect(function()
 end)
 
 -- ====================================================================
--- Population of Menus
+-- Population of Menus (Right-Click Function Row to Open Inner Settings)
 -- ====================================================================
 
 -- [ TAB 1: PLAYER ]
 createToggleRow(playerPage, "Walk Speed", false, function(v)
     speedEnabled = v
     local hum = getHumanoid()
-    if hum and not v then hum.WalkSpeed = defaultSpeed end
-end, 1)
-
-createSliderRow(playerPage, "Speed Value", 16, 200, 16, function(v)
-    currentSpeed = v
-    if speedEnabled then
-        local hum = getHumanoid()
-        if hum then hum.WalkSpeed = currentSpeed end
+    if hum then
+        hum.WalkSpeed = v and currentSpeed or defaultSpeed
     end
-end, 2)
+end, 1, function(sub, rowCtrl)
+    createSubSlider(sub, "Speed Value", 16, 200, 16, function(v)
+        currentSpeed = v
+        if speedEnabled then
+            local hum = getHumanoid()
+            if hum then hum.WalkSpeed = currentSpeed end
+        end
+    end, 1)
+    createKeybindRow(sub, "Toggle Keybind", nil, function()
+        rowCtrl.toggle()
+    end, 2)
+end)
 
 createToggleRow(playerPage, "Jump Power", false, function(v)
     jumpEnabled = v
     local hum = getHumanoid()
-    if hum and not v then hum.UseJumpPower = true; hum.JumpPower = defaultJump end
-end, 3)
-
-createSliderRow(playerPage, "Jump Value", 50, 300, 50, function(v)
-    currentJump = v
-    if jumpEnabled then
-        local hum = getHumanoid()
-        if hum then hum.UseJumpPower = true; hum.JumpPower = currentJump end
+    if hum then
+        hum.UseJumpPower = true
+        hum.JumpPower = v and currentJump or defaultJump
     end
-end, 4)
+end, 2, function(sub, rowCtrl)
+    createSubSlider(sub, "Jump Value", 50, 300, 50, function(v)
+        currentJump = v
+        if jumpEnabled then
+            local hum = getHumanoid()
+            if hum then hum.UseJumpPower = true; hum.JumpPower = currentJump end
+        end
+    end, 1)
+    createKeybindRow(sub, "Toggle Keybind", nil, function()
+        rowCtrl.toggle()
+    end, 2)
+end)
 
 createToggleRow(playerPage, "Bunny Hop (Bhop)", false, function(v)
     bhopEnabled = v
     bhopMomentum = currentSpeed
     setBhopScreenWidgets(v)
-end, 5)
+end, 3, function(sub, rowCtrl)
+    createSubToggle(sub, "Show Auto-Jump Button", true, function(showBtn)
+        setBhopScreenWidgets(bhopEnabled, showBtn, nil)
+    end, 1)
+    createMovePositionRow(sub, "Auto-Jump Button Pos", "autoJump", 2)
+    createKeybindRow(sub, "Auto-Jump Keybind", nil, function()
+        triggerAutoJumpAction()
+    end, 3)
+    createSubToggle(sub, "Show Speedometer HUD", true, function(showHud)
+        setBhopScreenWidgets(bhopEnabled, nil, showHud)
+    end, 4)
+    createMovePositionRow(sub, "Speedometer HUD Pos", "speedHud", 5)
+    createKeybindRow(sub, "Toggle Bhop Keybind", nil, function()
+        rowCtrl.toggle()
+    end, 6)
+end)
 
 createToggleRow(playerPage, "Fly Mode (Mobile/PC)", false, function(v)
     flyEnabled = v
     if v then startFly() else stopFly() end
-end, 6)
-
-createSliderRow(playerPage, "Fly Speed", 10, 200, 50, function(v)
-    flySpeed = v
-end, 7)
+end, 4, function(sub, rowCtrl)
+    createSubSlider(sub, "Fly Speed", 10, 200, 50, function(v)
+        flySpeed = v
+    end, 1)
+    createSubToggle(sub, "Show Up/Down Buttons", true, function(showFly)
+        refreshFlyButtonsVisibility(showFly)
+    end, 2)
+    createMovePositionRow(sub, "Up/Down Buttons Pos", "flyBtns", 3)
+    createKeybindRow(sub, "Toggle Fly Keybind", nil, function()
+        rowCtrl.toggle()
+    end, 4)
+end)
 
 createToggleRow(playerPage, "Noclip (Walk Through)", false, function(v)
     noclipEnabled = v
-end, 8)
+end, 5, function(sub, rowCtrl)
+    createKeybindRow(sub, "Toggle Keybind", nil, function()
+        rowCtrl.toggle()
+    end, 1)
+end)
 
 createToggleRow(playerPage, "Infinite Jump", false, function(v)
     infJumpEnabled = v
-end, 9)
+end, 6, function(sub, rowCtrl)
+    createKeybindRow(sub, "Toggle Keybind", nil, function()
+        rowCtrl.toggle()
+    end, 1)
+end)
 
 -- [ TAB 2: VISUALS & COMBAT ]
 createToggleRow(visualsPage, "Camlock (Nearest Player)", false, function(v)
@@ -1104,22 +1783,48 @@ createToggleRow(visualsPage, "Camlock (Nearest Player)", false, function(v)
         updateCamlockButtonVisual(false)
     end
     setCamlockButtonVisible(v)
-end, 1)
+end, 1, function(sub, rowCtrl)
+    createSubToggle(sub, "Show Lock Button", true, function(showBtn)
+        setCamlockButtonVisible(camlockEnabled, showBtn)
+    end, 1)
+    createMovePositionRow(sub, "Lock Button Position", "camlock", 2)
+    createKeybindRow(sub, "Lock Target Keybind", Enum.KeyCode.Q, function()
+        triggerCamlockAction()
+    end, 3)
+    createKeybindRow(sub, "Toggle Camlock Keybind", nil, function()
+        rowCtrl.toggle()
+    end, 4)
+    createSubSlider(sub, "Aim Smoothness (%)", 5, 100, 25, function(v)
+        CAMLOCK_SMOOTHNESS = math.clamp(v / 100, 0.05, 1)
+    end, 5)
+end)
 
 createToggleRow(visualsPage, "Player ESP (Chams)", false, function(v)
     espEnabled = v
     updateESP()
-end, 2)
+end, 2, function(sub, rowCtrl)
+    createKeybindRow(sub, "Toggle Keybind", nil, function()
+        rowCtrl.toggle()
+    end, 1)
+end)
 
 createToggleRow(visualsPage, "Fullbright", false, function(v)
     fullbrightEnabled = v
     applyFullbright(v)
-end, 3)
+end, 3, function(sub, rowCtrl)
+    createKeybindRow(sub, "Toggle Keybind", nil, function()
+        rowCtrl.toggle()
+    end, 1)
+end)
 
 -- [ TAB 3: SETTINGS & UTILITY ]
 createToggleRow(settingsPage, "Anti-AFK (20m Kick Guard)", false, function(v)
     antiAfkEnabled = v
-end, 1)
+end, 1, function(sub, rowCtrl)
+    createKeybindRow(sub, "Toggle Keybind", nil, function()
+        rowCtrl.toggle()
+    end, 1)
+end)
 
 createActionButton(settingsPage, "Server Rejoin", "Rejoin", function()
     TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, player)
