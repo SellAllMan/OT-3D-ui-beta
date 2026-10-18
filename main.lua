@@ -2744,9 +2744,6 @@ summonUIWithAnimation = function()
     pagesTrack.Position = UDim2.new(-(activeIdx - 1), 0, 0, 0)
     local activeCenterY = 12 + ((activeIdx - 1) * 46) + 18
     tabIndicator.Position = UDim2.new(0.5, 0, 0, activeCenterY)
-    for idx, ic in ipairs(allTabIcons) do
-        ic.ImageColor3 = (idx == activeIdx) and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 170)
-    end
 
     surfaceGui.Enabled = true
     backSurfaceGui.Enabled = true
