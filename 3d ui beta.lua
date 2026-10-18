@@ -2822,29 +2822,34 @@ end
 -- Populate Wardrobe Options
 local wardrobeToggleControllers = {}
 
-table.insert(wardrobeToggleControllers, createToggleRow(wardrobePage, "Freeze Pose (Mannequin)", false, function(v)
+local function addWardrobeToggle(name, callback, order)
+    local _, ctrl = createToggleRow(wardrobePage, name, false, callback, order)
+    table.insert(wardrobeToggleControllers, ctrl)
+end
+
+addWardrobeToggle("Freeze Pose (Mannequin)", function(v)
     setFreezePose(v)
-end, 1))
+end, 1)
 
-table.insert(wardrobeToggleControllers, createToggleRow(wardrobePage, "Rainbow Chroma Skin", false, function(v)
+addWardrobeToggle("Rainbow Chroma Skin", function(v)
     setRainbowSkin(v)
-end, 2))
+end, 2)
 
-table.insert(wardrobeToggleControllers, createToggleRow(wardrobePage, "Ghost Mode (50% Alpha)", false, function(v)
+addWardrobeToggle("Ghost Mode (50% Alpha)", function(v)
     setGhostMode(v)
-end, 3))
+end, 3)
 
-table.insert(wardrobeToggleControllers, createToggleRow(wardrobePage, "Forcefield Shield", false, function(v)
+addWardrobeToggle("Forcefield Shield", function(v)
     setForcefield(v)
-end, 4))
+end, 4)
 
-table.insert(wardrobeToggleControllers, createToggleRow(wardrobePage, "Neon Glow Body", false, function(v)
+addWardrobeToggle("Neon Glow Body", function(v)
     setNeonGlow(v)
-end, 5))
+end, 5)
 
-table.insert(wardrobeToggleControllers, createToggleRow(wardrobePage, "Sparkles & Fire Aura", false, function(v)
+addWardrobeToggle("Sparkles & Fire Aura", function(v)
     setAura(v)
-end, 6))
+end, 6)
 
 createActionButton(wardrobePage, "Accessories (Hats)", "Toggle", function()
     toggleAccessories()
