@@ -705,10 +705,14 @@ local backSidebarStroke = Instance.new("UIStroke", backSidebar)
 backSidebarStroke.Color = Color3.fromRGB(55, 55, 70)
 backSidebarStroke.Thickness = 1.5
 
+local function getMainTotalPixels()
+    return math.round(currentPartWidth * 100)
+end
+
 backMainWindow = Instance.new("Frame")
 backMainWindow.Name = "BackMainWindow"
-backMainWindow.Size = UDim2.new(1, -60, 1, -55)
-backMainWindow.Position = UDim2.new(0, 0, 0, 0)
+backMainWindow.Size = UDim2.new(0, getMainTotalPixels() - 60, 1, -55)
+backMainWindow.Position = UDim2.new(1, -getMainTotalPixels(), 0, 0)
 backMainWindow.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
 backMainWindow.BorderSizePixel = 0
 backMainWindow.Parent = backContainer
@@ -742,6 +746,9 @@ sidebar.BorderSizePixel = 0
 sidebar.Parent = container
 Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 16)
 
+local sidebarScale = Instance.new("UIScale", sidebar)
+sidebarScale.Scale = 1
+
 local sidebarStroke = Instance.new("UIStroke", sidebar)
 sidebarStroke.Color = Color3.fromRGB(55, 55, 70)
 sidebarStroke.Thickness = 1.5
@@ -757,16 +764,20 @@ tabIndicator.ZIndex = 1
 tabIndicator.Parent = sidebar
 Instance.new("UICorner", tabIndicator).CornerRadius = UDim.new(0, 8)
 
--- Front MainWindow
+-- Front MainWindow (Pixel-locked width so opening/closing side window never squishes or snaps MainWindow)
 mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainWindow"
-mainFrame.Size = UDim2.new(1, -60, 1, -55)
+mainFrame.Size = UDim2.new(0, getMainTotalPixels() - 60, 1, -55)
 mainFrame.Position = UDim2.new(0, 60, 0, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
 mainFrame.BorderSizePixel = 0
 mainFrame.ClipsDescendants = true
+mainFrame.ZIndex = 2
 mainFrame.Parent = container
 Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 16)
+
+local mainFrameScale = Instance.new("UIScale", mainFrame)
+mainFrameScale.Scale = 1
 
 local stroke = Instance.new("UIStroke", mainFrame)
 stroke.Color = Color3.fromRGB(65, 65, 80)
@@ -884,26 +895,33 @@ do
     local registeredKeybinds = {}
     local activeBindingEntry = nil
     local activeSettingsOwner = nil
+    local sideTitleThread = nil
+    local sideCloseDisconnectId = 0
 
     -- Separate Floating Side Settings Window (Right Side of MainWindow)
     sideSettingsWindow = Instance.new("CanvasGroup")
     sideSettingsWindow.Name = "SideSettingsWindow"
     sideSettingsWindow.Size = UDim2.new(0, 230, 1, -55)
-    sideSettingsWindow.Position = UDim2.new(1, -210, 0, 0)
+    sideSettingsWindow.Position = UDim2.new(0, getMainTotalPixels() - 55, 0, 14)
     sideSettingsWindow.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
     sideSettingsWindow.BorderSizePixel = 0
     sideSettingsWindow.GroupTransparency = 1
     sideSettingsWindow.Visible = false
+    sideSettingsWindow.ZIndex = 1
     sideSettingsWindow.Parent = container
     Instance.new("UICorner", sideSettingsWindow).CornerRadius = UDim.new(0, 16)
+
+    local sideWindowScale = Instance.new("UIScale", sideSettingsWindow)
+    sideWindowScale.Scale = 0.84
 
     local sideWindowStroke = Instance.new("UIStroke", sideSettingsWindow)
     sideWindowStroke.Color = Color3.fromRGB(65, 115, 195)
     sideWindowStroke.Thickness = 1.5
 
     local sideHeaderIcon = Instance.new("ImageLabel")
+    sideHeaderIcon.AnchorPoint = Vector2.new(0.5, 0.5)
     sideHeaderIcon.Size = UDim2.new(0, 16, 0, 16)
-    sideHeaderIcon.Position = UDim2.new(0, 14, 0, 12)
+    sideHeaderIcon.Position = UDim2.new(0, 22, 0, 20)
     sideHeaderIcon.BackgroundTransparency = 1
     sideHeaderIcon.Image = "rbxassetid://10734950309"
     sideHeaderIcon.ImageColor3 = Color3.fromRGB(95, 175, 255)
@@ -933,8 +951,9 @@ do
     sideWindowSub.Parent = sideSettingsWindow
 
     local sideCloseBtn = Instance.new("TextButton")
+    sideCloseBtn.AnchorPoint = Vector2.new(0.5, 0.5)
     sideCloseBtn.Size = UDim2.new(0, 24, 0, 24)
-    sideCloseBtn.Position = UDim2.new(1, -32, 0, 10)
+    sideCloseBtn.Position = UDim2.new(1, -20, 0, 22)
     sideCloseBtn.BackgroundColor3 = Color3.fromRGB(42, 44, 58)
     sideCloseBtn.Text = "X"
     sideCloseBtn.TextColor3 = Color3.fromRGB(210, 215, 230)
@@ -944,11 +963,19 @@ do
     Instance.new("UICorner", sideCloseBtn).CornerRadius = UDim.new(0, 6)
 
     local sideDivider = Instance.new("Frame")
-    sideDivider.Size = UDim2.new(1, -24, 0, 1)
+    sideDivider.Size = UDim2.new(1, -24, 0, 2)
     sideDivider.Position = UDim2.new(0, 12, 0, 44)
-    sideDivider.BackgroundColor3 = Color3.fromRGB(45, 52, 72)
+    sideDivider.BackgroundColor3 = Color3.fromRGB(35, 40, 56)
     sideDivider.BorderSizePixel = 0
     sideDivider.Parent = sideSettingsWindow
+    Instance.new("UICorner", sideDivider).CornerRadius = UDim.new(1, 0)
+
+    local sideDividerFill = Instance.new("Frame")
+    sideDividerFill.Size = UDim2.new(1, 0, 1, 0)
+    sideDividerFill.BackgroundColor3 = Color3.fromRGB(70, 155, 255)
+    sideDividerFill.BorderSizePixel = 0
+    sideDividerFill.Parent = sideDivider
+    Instance.new("UICorner", sideDividerFill).CornerRadius = UDim.new(1, 0)
 
     local sideContentHost = Instance.new("Frame")
     sideContentHost.Name = "SideContentHost"
@@ -958,41 +985,110 @@ do
     sideContentHost.ClipsDescendants = true
     sideContentHost.Parent = sideSettingsWindow
 
+    local function typewriteSideTitle(targetText)
+        if sideTitleThread then task.cancel(sideTitleThread) end
+        sideTitleThread = task.spawn(function()
+            local current = ""
+            for i = 1, #targetText do
+                local nextChar = targetText:sub(i, i)
+                sideWindowTitle.Text = current .. scrambleChars[math.random(1, #scrambleChars)]
+                task.wait(0.01)
+                current = current .. nextChar
+                sideWindowTitle.Text = current
+            end
+            sideWindowTitle.Text = targetText
+        end)
+    end
+
+    local function animateSubItemsIn(pageFrame)
+        if not pageFrame then return end
+        local items = {}
+        for _, child in ipairs(pageFrame:GetChildren()) do
+            if child:IsA("GuiObject") then
+                table.insert(items, child)
+            end
+        end
+        table.sort(items, function(a, b)
+            return (a.LayoutOrder or 0) < (b.LayoutOrder or 0)
+        end)
+        for idx, item in ipairs(items) do
+            local sc = item:FindFirstChildOfClass("UIScale")
+            if not sc then
+                sc = Instance.new("UIScale")
+                sc.Parent = item
+            end
+            sc.Scale = 0.86
+            item.BackgroundTransparency = 0.55
+            task.delay((idx - 1) * 0.038, function()
+                if item and item.Parent then
+                    TweenService:Create(sc, TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                        Scale = 1
+                    }):Play()
+                    TweenService:Create(item, TweenInfo.new(0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                        BackgroundTransparency = 0
+                    }):Play()
+                end
+            end)
+        end
+    end
+
     closeSideSettingsWindow = function(instant)
+        sideCloseDisconnectId = sideCloseDisconnectId + 1
+        local myCloseId = sideCloseDisconnectId
+
         if activeSettingsOwner then
             activeSettingsOwner.setHighlight(false)
-            if activeSettingsOwner.page then
-                activeSettingsOwner.page.Visible = false
-            end
+            local prevOwner = activeSettingsOwner
             activeSettingsOwner = nil
+            if instant and prevOwner.page then
+                prevOwner.page.Visible = false
+            else
+                task.delay(0.24, function()
+                    if activeSettingsOwner ~= prevOwner and prevOwner.page then
+                        prevOwner.page.Visible = false
+                    end
+                end)
+            end
         end
+
         if not isSideSettingsOpen then return end
         isSideSettingsOpen = false
         backSideWindow.Visible = false
-        mainFrame.Size = UDim2.new(1, -60, 1, -55)
-        backMainWindow.Size = UDim2.new(1, -60, 1, -55)
-        backMainWindow.Position = UDim2.new(0, 0, 0, 0)
+
+        local mainTotalPx = getMainTotalPixels()
+        mainFrame.Size = UDim2.new(0, mainTotalPx - 60, 1, -55)
+        backMainWindow.Size = UDim2.new(0, mainTotalPx - 60, 1, -55)
+        backMainWindow.Position = UDim2.new(1, -mainTotalPx, 0, 0)
 
         if instant or not isUIVisible then
             sideSettingsWindow.Visible = false
             sideSettingsWindow.GroupTransparency = 1
+            sideWindowScale.Scale = 0.84
             if isUIVisible and uiPart then
                 uiPart.Size = Vector3.new(currentPartWidth, currentPartHeight, 0.05)
             end
             return
         end
 
-        TweenService:Create(uiPart, TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+        TweenService:Create(sideHeaderIcon, TweenInfo.new(0.24, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+            Rotation = -90
+        }):Play()
+
+        TweenService:Create(uiPart, TweenInfo.new(0.34, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
             Size = Vector3.new(currentPartWidth, currentPartHeight, 0.05)
         }):Play()
 
-        local fadeOut = TweenService:Create(sideSettingsWindow, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+        TweenService:Create(sideWindowScale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+            Scale = 0.82
+        }):Play()
+
+        local foldIn = TweenService:Create(sideSettingsWindow, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
             GroupTransparency = 1,
-            Position = UDim2.new(1, -205, 0, 0)
+            Position = UDim2.new(0, mainTotalPx - 58, 0, 16)
         })
-        fadeOut:Play()
-        fadeOut.Completed:Connect(function()
-            if not isSideSettingsOpen then
+        foldIn:Play()
+        foldIn.Completed:Connect(function()
+            if sideCloseDisconnectId == myCloseId and not isSideSettingsOpen then
                 sideSettingsWindow.Visible = false
             end
         end)
@@ -1000,6 +1096,7 @@ do
 
     local function openSideSettingsFor(ownerEntry)
         if interactionState ~= "IDLE" then return end
+        sideCloseDisconnectId = sideCloseDisconnectId + 1
 
         -- Clicking the same function again closes the side window
         if activeSettingsOwner == ownerEntry and isSideSettingsOpen then
@@ -1017,43 +1114,78 @@ do
 
         activeSettingsOwner = ownerEntry
         ownerEntry.setHighlight(true)
-        sideWindowTitle.Text = ownerEntry.name
+        typewriteSideTitle(ownerEntry.name)
 
         if ownerEntry.page then
             ownerEntry.page.CanvasPosition = Vector2.zero
             ownerEntry.page.Visible = true
+            animateSubItemsIn(ownerEntry.page)
         end
+
+        local mainTotalPx = getMainTotalPixels()
+        mainFrame.Size = UDim2.new(0, mainTotalPx - 60, 1, -55)
+        backMainWindow.Size = UDim2.new(0, mainTotalPx - 60, 1, -55)
+        backMainWindow.Position = UDim2.new(1, -mainTotalPx, 0, 0)
+
+        -- Header icon spin + divider sweep + rim glow pulse
+        sideHeaderIcon.Rotation = -110
+        TweenService:Create(sideHeaderIcon, TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Rotation = 0
+        }):Play()
+
+        sideDividerFill.Size = UDim2.new(0, 0, 1, 0)
+        TweenService:Create(sideDividerFill, TweenInfo.new(0.44, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+            Size = UDim2.new(1, 0, 1, 0)
+        }):Play()
+
+        sideWindowStroke.Color = Color3.fromRGB(115, 205, 255)
+        TweenService:Create(sideWindowStroke, TweenInfo.new(0.45, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            Color = Color3.fromRGB(65, 115, 195)
+        }):Play()
 
         if not isSideSettingsOpen then
             isSideSettingsOpen = true
-            mainFrame.Size = UDim2.new(1, -298, 1, -55)
-            backMainWindow.Size = UDim2.new(1, -298, 1, -55)
-            backMainWindow.Position = UDim2.new(0, 238, 0, 0)
             backSideWindow.Visible = true
 
-            sideSettingsWindow.Position = UDim2.new(1, -205, 0, 0)
+            sideSettingsWindow.Position = UDim2.new(0, mainTotalPx - 58, 0, 16)
             sideSettingsWindow.GroupTransparency = 1
+            sideWindowScale.Scale = 0.82
             sideSettingsWindow.Visible = true
 
-            TweenService:Create(uiPart, TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            TweenService:Create(uiPart, TweenInfo.new(0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
                 Size = Vector3.new(currentPartWidth + SIDE_PANEL_STUDS, currentPartHeight, 0.05)
             }):Play()
 
-            TweenService:Create(sideSettingsWindow, TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-                GroupTransparency = 0,
-                Position = UDim2.new(1, -230, 0, 0)
+            TweenService:Create(sideWindowScale, TweenInfo.new(0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Scale = 1
+            }):Play()
+
+            TweenService:Create(sideSettingsWindow, TweenInfo.new(0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                GroupTransparency = 0
+            }):Play()
+
+            TweenService:Create(sideSettingsWindow, TweenInfo.new(0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Position = UDim2.new(0, mainTotalPx + 8, 0, 0)
             }):Play()
         else
-            -- Subtle bounce when switching from one function's settings to another
-            sideSettingsWindow.Position = UDim2.new(1, -220, 0, 0)
-            TweenService:Create(sideSettingsWindow, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-                Position = UDim2.new(1, -230, 0, 0)
+            -- Crisp spring pop when switching between functions
+            sideWindowScale.Scale = 0.94
+            sideSettingsWindow.Position = UDim2.new(0, mainTotalPx + 18, 0, 5)
+            TweenService:Create(sideWindowScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Scale = 1
+            }):Play()
+            TweenService:Create(sideSettingsWindow, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Position = UDim2.new(0, mainTotalPx + 8, 0, 0)
             }):Play()
         end
     end
 
     sideCloseBtn.Activated:Connect(function()
         if interactionState ~= "IDLE" then return end
+        sideCloseBtn.Size = UDim2.new(0, 19, 0, 19)
+        TweenService:Create(sideCloseBtn, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Size = UDim2.new(0, 24, 0, 24)
+        }):Play()
         closeSideSettingsWindow(false)
     end)
 
@@ -2441,6 +2573,10 @@ local function switchTab(newIndex, targetCenterY, icon, tabName)
     if isAnimating or currentTabIndex == newIndex then return end
     isAnimating = true
 
+    if isSideSettingsOpen and closeSideSettingsWindow then
+        closeSideSettingsWindow(false)
+    end
+
     typewriteTitle(tabName)
 
     local currentCenterY = tabIndicator.Position.Y.Offset
@@ -2667,6 +2803,14 @@ local function resizeUIByDelta(deltaX, deltaY)
     currentPartHeight = math.clamp(currentPartHeight + (deltaY * studsPerPixel), 2.2, 8.0)
     local totalW = currentPartWidth + (isSideSettingsOpen and SIDE_PANEL_STUDS or 0)
     uiPart.Size = Vector3.new(totalW, currentPartHeight, 0.05)
+
+    local mainTotalPx = math.round(currentPartWidth * 100)
+    mainFrame.Size = UDim2.new(0, mainTotalPx - 60, 1, -55)
+    backMainWindow.Size = UDim2.new(0, mainTotalPx - 60, 1, -55)
+    backMainWindow.Position = UDim2.new(1, -mainTotalPx, 0, 0)
+    if isSideSettingsOpen and sideSettingsWindow then
+        sideSettingsWindow.Position = UDim2.new(0, mainTotalPx + 8, 0, 0)
+    end
     pagesTrack.Position = UDim2.new(-((currentTabIndex or 1) - 1), 0, 0, 0)
 end
 
@@ -2843,8 +2987,41 @@ end
 end -- [End Camera Alignment Zoom Block]
 
 -- ====================================================================
--- Hide & Summon Animations
+-- Hide & Summon Animations (3D Spatial Holographic Spring System)
 -- ====================================================================
+local function ensureUIScale(guiObj)
+    local sc = guiObj:FindFirstChildOfClass("UIScale")
+    if not sc then
+        sc = Instance.new("UIScale")
+        sc.Parent = guiObj
+    end
+    return sc
+end
+
+local function cascadePageRows(pageFrame, baseDelay)
+    if not pageFrame then return end
+    local rows = {}
+    for _, child in ipairs(pageFrame:GetChildren()) do
+        if child:IsA("GuiObject") then
+            table.insert(rows, child)
+        end
+    end
+    table.sort(rows, function(a, b)
+        return (a.LayoutOrder or 0) < (b.LayoutOrder or 0)
+    end)
+    for idx, row in ipairs(rows) do
+        local sc = ensureUIScale(row)
+        sc.Scale = 0.88
+        task.delay((baseDelay or 0.08) + ((idx - 1) * 0.032), function()
+            if row and row.Parent then
+                TweenService:Create(sc, TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                    Scale = 1
+                }):Play()
+            end
+        end)
+    end
+end
+
 hideUIWithAnimation = function()
     if not isUIVisible or isAnimating then return end
     isAnimating = true
@@ -2859,14 +3036,47 @@ hideUIWithAnimation = function()
 
     backSurfaceGui.Enabled = false
 
-    TweenService:Create(grabBarContainer, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Position = UDim2.new(0, 0, 1, -15) }):Play()
-    TweenService:Create(sidebar, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Position = UDim2.new(0, -60, 0, 0) }):Play()
-    TweenService:Create(mainFrame, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Size = UDim2.new(0, 0, 0.05, 0), Position = UDim2.new(0.45, 0, 0.45, 0) }):Play()
+    local mScale = ensureUIScale(mainFrame)
+    local sScale = ensureUIScale(sidebar)
+    local gScale = ensureUIScale(grabBarContainer)
+    local mStroke = mainFrame:FindFirstChildOfClass("UIStroke")
+    if mStroke then
+        TweenService:Create(mStroke, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            Color = Color3.fromRGB(95, 185, 255)
+        }):Play()
+    end
 
-    local pushbackTarget = CFrame.new(uiPart.Position + (camera.CFrame.LookVector * 1.5) + Vector3.new(0, 0.35, 0)) * (uiPart.CFrame - uiPart.Position)
+    -- Layered fold-in without squishing MainWindow width
+    TweenService:Create(grabBarContainer, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+        Position = UDim2.new(0, 0, 1, -12)
+    }):Play()
+    TweenService:Create(gScale, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+        Scale = 0.65
+    }):Play()
 
-    local partTween = TweenService:Create(uiPart, TweenInfo.new(0.24, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Size = Vector3.new(0.3, 0.3, 0.05), CFrame = pushbackTarget })
-    local fadeTween = TweenService:Create(container, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { GroupTransparency = 1 })
+    TweenService:Create(sidebar, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+        Position = UDim2.new(0, 32, 0, 12)
+    }):Play()
+    TweenService:Create(sScale, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+        Scale = 0.82
+    }):Play()
+
+    TweenService:Create(mainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+        Position = UDim2.new(0, 60, 0, 22)
+    }):Play()
+    TweenService:Create(mScale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+        Scale = 0.8
+    }):Play()
+
+    local pushbackTarget = uiPart.CFrame * CFrame.new(0, 0.25, -1.15) * CFrame.Angles(math.rad(-16), math.rad(6), math.rad(-2))
+
+    local partTween = TweenService:Create(uiPart, TweenInfo.new(0.26, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+        Size = Vector3.new(currentPartWidth * 0.45, currentPartHeight * 0.45, 0.05),
+        CFrame = pushbackTarget
+    })
+    local fadeTween = TweenService:Create(container, TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+        GroupTransparency = 1
+    })
 
     partTween:Play()
     fadeTween:Play()
@@ -2901,14 +3111,32 @@ summonUIWithAnimation = function()
     local finalSpawnPos = calculateCameraFrontPosition()
     local finalCFrame = getFacingCFrame(finalSpawnPos)
 
-    uiPart.Size = Vector3.new(0.2, 0.2, 0.05)
-    uiPart.CFrame = finalCFrame * CFrame.new(0, -0.8, -0.6) * CFrame.Angles(math.rad(12), 0, 0)
+    local mainTotalPx = math.round(currentPartWidth * 100)
+    mainFrame.Size = UDim2.new(0, mainTotalPx - 60, 1, -55)
+    backMainWindow.Size = UDim2.new(0, mainTotalPx - 60, 1, -55)
+    backMainWindow.Position = UDim2.new(1, -mainTotalPx, 0, 0)
+
+    local mScale = ensureUIScale(mainFrame)
+    local sScale = ensureUIScale(sidebar)
+    local gScale = ensureUIScale(grabBarContainer)
+    local mStroke = mainFrame:FindFirstChildOfClass("UIStroke")
+
+    uiPart.Size = Vector3.new(currentPartWidth * 0.52, currentPartHeight * 0.52, 0.05)
+    uiPart.CFrame = finalCFrame * CFrame.new(0, -0.55, -0.65) * CFrame.Angles(math.rad(18), math.rad(-8), math.rad(2.5))
 
     container.GroupTransparency = 1
-    sidebar.Position = UDim2.new(0, -60, 0, 0)
-    mainFrame.Size = UDim2.new(0.15, 0, 0.1, 0)
-    mainFrame.Position = UDim2.new(0.42, 0, 0.45, 0)
-    grabBarContainer.Position = UDim2.new(0, 0, 1, -15)
+    mainFrame.Position = UDim2.new(0, 60, 0, 26)
+    mScale.Scale = 0.82
+
+    sidebar.Position = UDim2.new(0, 32, 0, 12)
+    sScale.Scale = 0.82
+
+    grabBarContainer.Position = UDim2.new(0, 0, 1, -12)
+    gScale.Scale = 0.65
+
+    if mStroke then
+        mStroke.Color = Color3.fromRGB(95, 190, 255)
+    end
 
     local activeIdx = currentTabIndex or 1
     pagesTrack.Position = UDim2.new(-(activeIdx - 1), 0, 0, 0)
@@ -2925,34 +3153,53 @@ summonUIWithAnimation = function()
         [2] = "Visual Mod Menu",
         [3] = "Settings & Utility"
     }
-    typewriteTitle(tabTitles[currentTabIndex] or "Player Controls")
+    typewriteTitle(tabTitles[activeIdx] or "Player Controls")
 
-    local partTween = TweenService:Create(uiPart, TweenInfo.new(0.48, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+    local activePages = {
+        [1] = playerPage,
+        [2] = visualsPage,
+        [3] = settingsPage
+    }
+    cascadePageRows(activePages[activeIdx], 0.08)
+
+    local partTween = TweenService:Create(uiPart, TweenInfo.new(0.46, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
         Size = Vector3.new(currentPartWidth, currentPartHeight, 0.05),
         CFrame = finalCFrame
     })
-    local containerFade = TweenService:Create(container, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+    local containerFade = TweenService:Create(container, TweenInfo.new(0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
         GroupTransparency = 0
     })
 
     partTween:Play()
     containerFade:Play()
 
-    task.delay(0.12, function()
-        TweenService:Create(mainFrame, TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-            Size = UDim2.new(1, -60, 1, -55),
-            Position = UDim2.new(0, 60, 0, 0)
-        }):Play()
-    end)
+    TweenService:Create(mainFrame, TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Position = UDim2.new(0, 60, 0, 0)
+    }):Play()
+    TweenService:Create(mScale, TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Scale = 1
+    }):Play()
 
-    task.delay(0.22, function()
-        TweenService:Create(sidebar, TweenInfo.new(0.36, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+    if mStroke then
+        TweenService:Create(mStroke, TweenInfo.new(0.55, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            Color = Color3.fromRGB(65, 65, 80)
+        }):Play()
+    end
+
+    task.delay(0.08, function()
+        TweenService:Create(sidebar, TweenInfo.new(0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
             Position = UDim2.new(0, 0, 0, 0)
         }):Play()
+        TweenService:Create(sScale, TweenInfo.new(0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Scale = 1
+        }):Play()
     end)
 
-    task.delay(0.32, function()
-        local barTween = TweenService:Create(grabBarContainer, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+    task.delay(0.16, function()
+        TweenService:Create(gScale, TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Scale = 1
+        }):Play()
+        local barTween = TweenService:Create(grabBarContainer, TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
             Position = UDim2.new(0, 0, 1, -50)
         })
         barTween:Play()
@@ -3173,7 +3420,7 @@ do
         root.AssemblyAngularVelocity = Vector3.zero
         root.Anchored = true
 
-        -- 3. Smoothly shrink & hide the Main 3D UI while camera starts zooming out
+        -- 3. Smoothly fold & hide the Main 3D UI while camera starts zooming out
         wasMainUIVisibleBeforeWardrobe = isUIVisible
         if isUIVisible then
             if closeSideSettingsWindow then
@@ -3183,12 +3430,17 @@ do
             backSurfaceGui.Enabled = false
             if updateToggleBtnState then updateToggleBtnState(false) end
 
-            local pushbackTarget = CFrame.new(uiPart.Position + (camera.CFrame.LookVector * 1.4) + Vector3.new(0, 0.3, 0)) * (uiPart.CFrame - uiPart.Position)
-            TweenService:Create(uiPart, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-                Size = Vector3.new(0.25, 0.25, 0.05),
+            local mScale = ensureUIScale(mainFrame)
+            TweenService:Create(mScale, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+                Scale = 0.82
+            }):Play()
+
+            local pushbackTarget = uiPart.CFrame * CFrame.new(0, 0.25, -1.1) * CFrame.Angles(math.rad(-14), 0, 0)
+            TweenService:Create(uiPart, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+                Size = Vector3.new(currentPartWidth * 0.45, currentPartHeight * 0.45, 0.05),
                 CFrame = pushbackTarget
             }):Play()
-            TweenService:Create(container, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+            TweenService:Create(container, TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
                 GroupTransparency = 1
             }):Play()
 
@@ -3235,17 +3487,31 @@ do
         local finalCFrame = CFrame.lookAt(wardrobeSpawnPos, goalCamCFrame.Position)
         wardrobeRelCF = goalCamCFrame:ToObjectSpace(finalCFrame)
 
-        wardrobePart.Size = Vector3.new(0.2, 0.2, 0.05)
-        wardrobePart.CFrame = finalCFrame * CFrame.new(0, -0.6, -0.4)
+        local wScale = ensureUIScale(wardrobeMainWindow)
+        local wgScale = ensureUIScale(wardrobeGrabBarContainer)
+        local wStroke = wardrobeMainWindow:FindFirstChildOfClass("UIStroke")
+
+        wardrobePart.Size = Vector3.new(2.2, 1.9, 0.05)
+        wardrobePart.CFrame = finalCFrame * CFrame.new(-0.35, -0.45, -0.55) * CFrame.Angles(math.rad(16), math.rad(12), math.rad(-3))
         wardrobeContainer.GroupTransparency = 1
-        wardrobeMainWindow.Size = UDim2.new(0.15, 0, 0.1, 0)
-        wardrobeMainWindow.Position = UDim2.new(0.42, 0, 0.45, 0)
-        wardrobeGrabBarContainer.Position = UDim2.new(0, 0, 1, -15)
+        wardrobeMainWindow.Size = UDim2.new(1, 0, 1, -55)
+        wardrobeMainWindow.Position = UDim2.new(0, 0, 0, 22)
+        wScale.Scale = 0.82
+
+        wardrobeGrabBarContainer.Position = UDim2.new(0, 0, 1, -12)
+        wgScale.Scale = 0.65
+
+        if wStroke then
+            wStroke.Color = Color3.fromRGB(95, 190, 255)
+        end
 
         wardrobeSurfaceGui.AlwaysOnTop = false
         wardrobeSurfaceGui.Enabled = true
         wardrobeBackSurfaceGui.Enabled = true
         isWardrobeVisible = true
+
+        local wScroll = wardrobeMainWindow:FindFirstChildOfClass("ScrollingFrame")
+        cascadePageRows(wScroll, 0.06)
 
         profileStroke.Color = Color3.fromRGB(50, 140, 255)
         TweenService:Create(profileBtn, TweenInfo.new(0.25), {BackgroundColor3 = Color3.fromRGB(35, 45, 65)}):Play()
@@ -3254,25 +3520,34 @@ do
             Size = Vector3.new(4.2, 3.6, 0.05),
             CFrame = finalCFrame
         })
-        local containerFade = TweenService:Create(wardrobeContainer, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+        local containerFade = TweenService:Create(wardrobeContainer, TweenInfo.new(0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
             GroupTransparency = 0
         })
 
         partTween:Play()
         containerFade:Play()
 
-        task.delay(0.1, function()
-            TweenService:Create(wardrobeMainWindow, TweenInfo.new(0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                Size = UDim2.new(1, 0, 1, -55),
-                Position = UDim2.new(0, 0, 0, 0)
+        TweenService:Create(wardrobeMainWindow, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Position = UDim2.new(0, 0, 0, 0)
+        }):Play()
+        TweenService:Create(wScale, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Scale = 1
+        }):Play()
+
+        if wStroke then
+            TweenService:Create(wStroke, TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                Color = Color3.fromRGB(65, 65, 80)
             }):Play()
-        end)
+        end
 
         -- 7. Enable 360-degree orbit inspection controller
         setupOrbitController(charFocus, baseYaw)
 
-        task.delay(0.45, function()
-            local barTween = TweenService:Create(wardrobeGrabBarContainer, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        task.delay(0.18, function()
+            TweenService:Create(wgScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Scale = 1
+            }):Play()
+            local barTween = TweenService:Create(wardrobeGrabBarContainer, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
                 Position = UDim2.new(0, 0, 1, -50)
             })
             barTween:Play()
@@ -3291,13 +3566,31 @@ do
         profileStroke.Color = Color3.fromRGB(65, 65, 85)
         TweenService:Create(profileBtn, TweenInfo.new(0.25), {BackgroundColor3 = Color3.fromRGB(24, 24, 32)}):Play()
 
-        TweenService:Create(wardrobeGrabBarContainer, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Position = UDim2.new(0, 0, 1, -15) }):Play()
-        TweenService:Create(wardrobeMainWindow, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Size = UDim2.new(0, 0, 0.05, 0), Position = UDim2.new(0.5, 0, 0.5, 0) }):Play()
+        local wScale = ensureUIScale(wardrobeMainWindow)
+        local wgScale = ensureUIScale(wardrobeGrabBarContainer)
 
-        local camCF = activeWardrobeCamCF or camera.CFrame
-        local pushbackTarget = CFrame.new(wardrobePart.Position + (camCF.LookVector * 1.5) + Vector3.new(0, 0.35, 0)) * (wardrobePart.CFrame - wardrobePart.Position)
-        local partTween = TweenService:Create(wardrobePart, TweenInfo.new(0.24, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Size = Vector3.new(0.3, 0.3, 0.05), CFrame = pushbackTarget })
-        local fadeTween = TweenService:Create(wardrobeContainer, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { GroupTransparency = 1 })
+        TweenService:Create(wardrobeGrabBarContainer, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+            Position = UDim2.new(0, 0, 1, -12)
+        }):Play()
+        TweenService:Create(wgScale, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+            Scale = 0.65
+        }):Play()
+
+        TweenService:Create(wardrobeMainWindow, TweenInfo.new(0.24, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+            Position = UDim2.new(0, 0, 0, 20)
+        }):Play()
+        TweenService:Create(wScale, TweenInfo.new(0.24, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+            Scale = 0.8
+        }):Play()
+
+        local pushbackTarget = wardrobePart.CFrame * CFrame.new(-0.25, 0.25, -1.1) * CFrame.Angles(math.rad(-14), math.rad(10), 0)
+        local partTween = TweenService:Create(wardrobePart, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+            Size = Vector3.new(2.0, 1.7, 0.05),
+            CFrame = pushbackTarget
+        })
+        local fadeTween = TweenService:Create(wardrobeContainer, TweenInfo.new(0.23, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+            GroupTransparency = 1
+        })
 
         partTween:Play()
         fadeTween:Play()
