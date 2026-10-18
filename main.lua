@@ -816,15 +816,12 @@ trackViewport.BackgroundTransparency = 1
 trackViewport.ClipsDescendants = true
 trackViewport.Parent = mainFrame
 
-pagesTrack = Instance.new("ScrollingFrame")
+pagesTrack = Instance.new("Frame")
 pagesTrack.Name = "PagesTrack"
-pagesTrack.Size = UDim2.new(1, 0, 1, 0)
+pagesTrack.Size = UDim2.new(3, 0, 1, 0)
 pagesTrack.Position = UDim2.new(0, 0, 0, 0)
 pagesTrack.BackgroundTransparency = 1
 pagesTrack.BorderSizePixel = 0
-pagesTrack.ScrollBarThickness = 0
-pagesTrack.ScrollingEnabled = false
-pagesTrack.CanvasSize = UDim2.new(3, 0, 1, 0)
 pagesTrack.Parent = trackViewport
 
 local trackLayout = Instance.new("UIListLayout")
@@ -834,7 +831,7 @@ trackLayout.Parent = pagesTrack
 
 local function createPageColumn(order)
     local col = Instance.new("ScrollingFrame")
-    col.Size = UDim2.new(0.33333, 0, 1, 0)
+    col.Size = UDim2.new(1 / 3, 0, 1, 0)
     col.BackgroundTransparency = 1
     col.BorderSizePixel = 0
     col.ScrollBarThickness = 3
@@ -874,6 +871,23 @@ do
         return keyCode.Name or "None"
     end
 
+    local function attachSubItemDecor(row, dotColor)
+        local rowStroke = Instance.new("UIStroke", row)
+        rowStroke.Color = Color3.fromRGB(40, 45, 62)
+        rowStroke.Thickness = 1
+        rowStroke.Transparency = 0.35
+
+        local dot = Instance.new("Frame")
+        dot.Size = UDim2.new(0, 5, 0, 5)
+        dot.AnchorPoint = Vector2.new(0, 0.5)
+        dot.Position = UDim2.new(0, 10, 0.5, 0)
+        dot.BackgroundColor3 = dotColor or Color3.fromRGB(70, 150, 255)
+        dot.BorderSizePixel = 0
+        dot.Parent = row
+        Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+        return dot
+    end
+
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
         if UserInputService:GetFocusedTextBox() then return end
@@ -900,38 +914,47 @@ do
 
     createSubSlider = function(parent, name, minVal, maxVal, defaultVal, onSliderChange, order)
         local row = Instance.new("Frame")
-        row.Size = UDim2.new(1, 0, 0, 50)
-        row.BackgroundColor3 = Color3.fromRGB(26, 26, 36)
+        row.Size = UDim2.new(1, 0, 0, 52)
+        row.BackgroundColor3 = Color3.fromRGB(25, 27, 37)
         row.LayoutOrder = order or 1
         row.Parent = parent
         Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 
+        local dot = attachSubItemDecor(row, Color3.fromRGB(70, 155, 255))
+        dot.Position = UDim2.new(0, 10, 0, 15)
+
         local label = Instance.new("TextLabel")
         label.Size = UDim2.new(0.6, 0, 0, 20)
-        label.Position = UDim2.new(0, 10, 0, 5)
+        label.Position = UDim2.new(0, 21, 0, 5)
         label.BackgroundTransparency = 1
         label.Text = name
-        label.TextColor3 = Color3.fromRGB(195, 205, 225)
+        label.TextColor3 = Color3.fromRGB(205, 215, 235)
         label.Font = Enum.Font.GothamBold
         label.TextSize = 12
         label.TextXAlignment = Enum.TextXAlignment.Left
         label.Parent = row
 
+        local valBadge = Instance.new("Frame")
+        valBadge.Size = UDim2.new(0, 46, 0, 18)
+        valBadge.Position = UDim2.new(1, -56, 0, 6)
+        valBadge.BackgroundColor3 = Color3.fromRGB(34, 42, 62)
+        valBadge.BorderSizePixel = 0
+        valBadge.Parent = row
+        Instance.new("UICorner", valBadge).CornerRadius = UDim.new(0, 5)
+
         local valLabel = Instance.new("TextLabel")
-        valLabel.Size = UDim2.new(0, 55, 0, 20)
-        valLabel.Position = UDim2.new(1, -65, 0, 5)
+        valLabel.Size = UDim2.new(1, 0, 1, 0)
         valLabel.BackgroundTransparency = 1
         valLabel.Text = tostring(defaultVal)
-        valLabel.TextColor3 = Color3.fromRGB(120, 195, 255)
+        valLabel.TextColor3 = Color3.fromRGB(115, 195, 255)
         valLabel.Font = Enum.Font.GothamBold
-        valLabel.TextSize = 12
-        valLabel.TextXAlignment = Enum.TextXAlignment.Right
-        valLabel.Parent = row
+        valLabel.TextSize = 11
+        valLabel.Parent = valBadge
 
         local sliderBar = Instance.new("Frame")
-        sliderBar.Size = UDim2.new(1, -20, 0, 5)
-        sliderBar.Position = UDim2.new(0, 10, 0, 34)
-        sliderBar.BackgroundColor3 = Color3.fromRGB(42, 42, 58)
+        sliderBar.Size = UDim2.new(1, -24, 0, 6)
+        sliderBar.Position = UDim2.new(0, 12, 0, 35)
+        sliderBar.BackgroundColor3 = Color3.fromRGB(40, 44, 60)
         sliderBar.BorderSizePixel = 0
         sliderBar.Parent = row
         Instance.new("UICorner", sliderBar).CornerRadius = UDim.new(1, 0)
@@ -939,17 +962,17 @@ do
         local initialPercent = math.clamp((defaultVal - minVal) / math.max(1, maxVal - minVal), 0, 1)
         local sliderFill = Instance.new("Frame")
         sliderFill.Size = UDim2.new(initialPercent, 0, 1, 0)
-        sliderFill.BackgroundColor3 = Color3.fromRGB(60, 140, 255)
+        sliderFill.BackgroundColor3 = Color3.fromRGB(55, 140, 255)
         sliderFill.BorderSizePixel = 0
         sliderFill.Parent = sliderBar
         Instance.new("UICorner", sliderFill).CornerRadius = UDim.new(1, 0)
 
         local sliderKnob = Instance.new("TextButton")
         sliderKnob.Name = "Knob"
-        sliderKnob.Size = UDim2.new(0, 16, 0, 16)
+        sliderKnob.Size = UDim2.new(0, 14, 0, 14)
         sliderKnob.AnchorPoint = Vector2.new(0.5, 0.5)
         sliderKnob.Position = UDim2.new(initialPercent, 0, 0.5, 0)
-        sliderKnob.BackgroundColor3 = Color3.fromRGB(240, 245, 255)
+        sliderKnob.BackgroundColor3 = Color3.fromRGB(245, 248, 255)
         sliderKnob.Text = ""
         sliderKnob.AutoButtonColor = false
         sliderKnob.Parent = sliderBar
@@ -986,7 +1009,7 @@ do
             if isHoldingKnob and (input == knobTouchId or input.UserInputType == Enum.UserInputType.MouseButton1) then
                 isHoldingKnob = false
                 knobTouchId = nil
-                TweenService:Create(sliderKnob, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(240, 245, 255)}):Play()
+                TweenService:Create(sliderKnob, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(245, 248, 255)}):Play()
                 if interactionState == "SLIDING" then
                     interactionState = "IDLE"
                 end
@@ -1001,28 +1024,30 @@ do
     createSubToggle = function(parent, name, defaultState, onToggle, order)
         local row = Instance.new("Frame")
         row.Size = UDim2.new(1, 0, 0, 36)
-        row.BackgroundColor3 = Color3.fromRGB(26, 26, 36)
+        row.BackgroundColor3 = Color3.fromRGB(25, 27, 37)
         row.LayoutOrder = order or 1
         row.Parent = parent
         Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 
+        attachSubItemDecor(row, Color3.fromRGB(65, 205, 130))
+
         local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(0.65, 0, 1, 0)
-        label.Position = UDim2.new(0, 10, 0, 0)
+        label.Size = UDim2.new(0.62, 0, 1, 0)
+        label.Position = UDim2.new(0, 21, 0, 0)
         label.BackgroundTransparency = 1
         label.Text = name
-        label.TextColor3 = Color3.fromRGB(195, 205, 225)
+        label.TextColor3 = Color3.fromRGB(205, 215, 235)
         label.Font = Enum.Font.GothamBold
         label.TextSize = 12
         label.TextXAlignment = Enum.TextXAlignment.Left
         label.Parent = row
 
         local toggleBtn = Instance.new("TextButton")
-        toggleBtn.Size = UDim2.new(0, 62, 0, 24)
-        toggleBtn.Position = UDim2.new(1, -70, 0.5, -12)
-        toggleBtn.BackgroundColor3 = defaultState and Color3.fromRGB(45, 180, 100) or Color3.fromRGB(55, 55, 70)
+        toggleBtn.Size = UDim2.new(0, 62, 0, 22)
+        toggleBtn.Position = UDim2.new(1, -72, 0.5, -11)
+        toggleBtn.BackgroundColor3 = defaultState and Color3.fromRGB(45, 180, 100) or Color3.fromRGB(48, 50, 66)
         toggleBtn.Text = defaultState and "ON" or "OFF"
-        toggleBtn.TextColor3 = defaultState and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(190, 190, 205)
+        toggleBtn.TextColor3 = defaultState and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(175, 180, 198)
         toggleBtn.Font = Enum.Font.GothamBold
         toggleBtn.TextSize = 11
         toggleBtn.Parent = row
@@ -1037,7 +1062,7 @@ do
                 TweenService:Create(toggleBtn, TweenInfo.new(0.18), {BackgroundColor3 = Color3.fromRGB(45, 180, 100), TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
             else
                 toggleBtn.Text = "OFF"
-                TweenService:Create(toggleBtn, TweenInfo.new(0.18), {BackgroundColor3 = Color3.fromRGB(55, 55, 70), TextColor3 = Color3.fromRGB(190, 190, 205)}):Play()
+                TweenService:Create(toggleBtn, TweenInfo.new(0.18), {BackgroundColor3 = Color3.fromRGB(48, 50, 66), TextColor3 = Color3.fromRGB(175, 180, 198)}):Play()
             end
             onToggle(isToggled)
         end)
@@ -1047,26 +1072,28 @@ do
     createMovePositionRow = function(parent, name, widgetId, order)
         local row = Instance.new("Frame")
         row.Size = UDim2.new(1, 0, 0, 36)
-        row.BackgroundColor3 = Color3.fromRGB(26, 26, 36)
+        row.BackgroundColor3 = Color3.fromRGB(25, 27, 37)
         row.LayoutOrder = order or 1
         row.Parent = parent
         Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 
+        attachSubItemDecor(row, Color3.fromRGB(90, 175, 255))
+
         local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(0.6, 0, 1, 0)
-        label.Position = UDim2.new(0, 10, 0, 0)
+        label.Size = UDim2.new(0.58, 0, 1, 0)
+        label.Position = UDim2.new(0, 21, 0, 0)
         label.BackgroundTransparency = 1
         label.Text = name
-        label.TextColor3 = Color3.fromRGB(195, 205, 225)
+        label.TextColor3 = Color3.fromRGB(205, 215, 235)
         label.Font = Enum.Font.GothamBold
         label.TextSize = 12
         label.TextXAlignment = Enum.TextXAlignment.Left
         label.Parent = row
 
         local moveBtn = Instance.new("TextButton")
-        moveBtn.Size = UDim2.new(0, 82, 0, 24)
-        moveBtn.Position = UDim2.new(1, -90, 0.5, -12)
-        moveBtn.BackgroundColor3 = Color3.fromRGB(50, 115, 220)
+        moveBtn.Size = UDim2.new(0, 84, 0, 22)
+        moveBtn.Position = UDim2.new(1, -94, 0.5, -11)
+        moveBtn.BackgroundColor3 = Color3.fromRGB(45, 110, 215)
         moveBtn.Text = "Move Pos"
         moveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
         moveBtn.Font = Enum.Font.GothamBold
@@ -1080,7 +1107,7 @@ do
                 TweenService:Create(moveBtn, TweenInfo.new(0.18), {BackgroundColor3 = Color3.fromRGB(40, 185, 105)}):Play()
             else
                 moveBtn.Text = "Move Pos"
-                TweenService:Create(moveBtn, TweenInfo.new(0.18), {BackgroundColor3 = Color3.fromRGB(50, 115, 220)}):Play()
+                TweenService:Create(moveBtn, TweenInfo.new(0.18), {BackgroundColor3 = Color3.fromRGB(45, 110, 215)}):Play()
             end
         end
 
@@ -1094,27 +1121,29 @@ do
     createKeybindRow = function(parent, name, defaultKeyCode, onTrigger, order)
         local row = Instance.new("Frame")
         row.Size = UDim2.new(1, 0, 0, 36)
-        row.BackgroundColor3 = Color3.fromRGB(26, 26, 36)
+        row.BackgroundColor3 = Color3.fromRGB(25, 27, 37)
         row.LayoutOrder = order or 1
         row.Parent = parent
         Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 
+        attachSubItemDecor(row, Color3.fromRGB(165, 130, 255))
+
         local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(0.58, 0, 1, 0)
-        label.Position = UDim2.new(0, 10, 0, 0)
+        label.Size = UDim2.new(0.56, 0, 1, 0)
+        label.Position = UDim2.new(0, 21, 0, 0)
         label.BackgroundTransparency = 1
         label.Text = name
-        label.TextColor3 = Color3.fromRGB(195, 205, 225)
+        label.TextColor3 = Color3.fromRGB(205, 215, 235)
         label.Font = Enum.Font.GothamBold
         label.TextSize = 12
         label.TextXAlignment = Enum.TextXAlignment.Left
         label.Parent = row
 
         local keyBtn = Instance.new("TextButton")
-        keyBtn.Size = UDim2.new(0, 88, 0, 24)
-        keyBtn.Position = UDim2.new(1, -96, 0.5, -12)
-        keyBtn.BackgroundColor3 = Color3.fromRGB(40, 42, 56)
-        keyBtn.Text = "[ " .. formatKeyName(defaultKeyCode) .. " ]"
+        keyBtn.Size = UDim2.new(0, 84, 0, 22)
+        keyBtn.Position = UDim2.new(1, -94, 0.5, -11)
+        keyBtn.BackgroundColor3 = Color3.fromRGB(36, 39, 52)
+        keyBtn.Text = formatKeyName(defaultKeyCode)
         keyBtn.TextColor3 = Color3.fromRGB(150, 205, 255)
         keyBtn.Font = Enum.Font.GothamBold
         keyBtn.TextSize = 11
@@ -1122,7 +1151,7 @@ do
         Instance.new("UICorner", keyBtn).CornerRadius = UDim.new(0, 6)
 
         local keyStroke = Instance.new("UIStroke", keyBtn)
-        keyStroke.Color = Color3.fromRGB(70, 85, 115)
+        keyStroke.Color = Color3.fromRGB(68, 82, 112)
         keyStroke.Thickness = 1
 
         local entry = {
@@ -1133,15 +1162,15 @@ do
 
         entry.updateVisual = function(listening)
             if listening then
-                keyBtn.Text = "[ Press Key ]"
+                keyBtn.Text = "Press Key.."
                 keyBtn.TextColor3 = Color3.fromRGB(255, 215, 90)
                 keyStroke.Color = Color3.fromRGB(255, 190, 60)
-                TweenService:Create(keyBtn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(60, 48, 28)}):Play()
+                TweenService:Create(keyBtn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(58, 46, 26)}):Play()
             else
-                keyBtn.Text = "[ " .. formatKeyName(entry.key) .. " ]"
-                keyBtn.TextColor3 = entry.key and Color3.fromRGB(150, 205, 255) or Color3.fromRGB(160, 165, 180)
-                keyStroke.Color = entry.key and Color3.fromRGB(75, 125, 195) or Color3.fromRGB(65, 70, 90)
-                TweenService:Create(keyBtn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(40, 42, 56)}):Play()
+                keyBtn.Text = formatKeyName(entry.key)
+                keyBtn.TextColor3 = entry.key and Color3.fromRGB(140, 205, 255) or Color3.fromRGB(150, 158, 178)
+                keyStroke.Color = entry.key and Color3.fromRGB(70, 125, 198) or Color3.fromRGB(60, 66, 86)
+                TweenService:Create(keyBtn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(36, 39, 52)}):Play()
             end
         end
 
@@ -1185,7 +1214,7 @@ do
         rowStroke.Transparency = 1
 
         local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(0.58, 0, 1, 0)
+        label.Size = UDim2.new(0.55, 0, 1, 0)
         label.Position = UDim2.new(0, 14, 0, 0)
         label.BackgroundTransparency = 1
         label.Text = name
@@ -1197,8 +1226,8 @@ do
         label.Parent = row
 
         local toggleBtn = Instance.new("TextButton")
-        toggleBtn.Size = UDim2.new(0, 75, 0, 28)
-        toggleBtn.Position = UDim2.new(1, -85, 0.5, -14)
+        toggleBtn.Size = UDim2.new(0, 72, 0, 28)
+        toggleBtn.Position = UDim2.new(1, -82, 0.5, -14)
         toggleBtn.BackgroundColor3 = defaultState and Color3.fromRGB(45, 180, 100) or Color3.fromRGB(60, 60, 75)
         toggleBtn.Text = defaultState and "ON" or "OFF"
         toggleBtn.TextColor3 = defaultState and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
@@ -1236,7 +1265,7 @@ do
         }
 
         if setupSubSettings then
-            -- Right-Click Hitbox & Settings Indicator Badge
+            -- Right-Click Hitbox & Lucide Settings Icon Button
             local rightClickCapture = Instance.new("TextButton")
             rightClickCapture.Name = "RightClickSettingsTrigger"
             rightClickCapture.Size = UDim2.new(1, 0, 1, 0)
@@ -1248,43 +1277,50 @@ do
 
             local gearBadge = Instance.new("TextButton")
             gearBadge.Name = "SettingsExpandBadge"
-            gearBadge.Size = UDim2.new(0, 28, 0, 24)
-            gearBadge.Position = UDim2.new(1, -118, 0.5, -12)
-            gearBadge.BackgroundColor3 = Color3.fromRGB(36, 38, 52)
-            gearBadge.Text = "▾"
-            gearBadge.TextColor3 = Color3.fromRGB(145, 165, 205)
-            gearBadge.Font = Enum.Font.GothamBold
-            gearBadge.TextSize = 13
+            gearBadge.Size = UDim2.new(0, 28, 0, 28)
+            gearBadge.Position = UDim2.new(1, -116, 0.5, -14)
+            gearBadge.BackgroundColor3 = Color3.fromRGB(36, 39, 52)
+            gearBadge.Text = ""
+            gearBadge.AutoButtonColor = false
             gearBadge.ZIndex = 4
             gearBadge.Parent = row
-            Instance.new("UICorner", gearBadge).CornerRadius = UDim.new(0, 6)
+            Instance.new("UICorner", gearBadge).CornerRadius = UDim.new(0, 7)
+
+            local gearBadgeStroke = Instance.new("UIStroke", gearBadge)
+            gearBadgeStroke.Color = Color3.fromRGB(58, 66, 88)
+            gearBadgeStroke.Thickness = 1
+
+            local gearIcon = Instance.new("ImageLabel")
+            gearIcon.Name = "LucideSettingsIcon"
+            gearIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+            gearIcon.Size = UDim2.new(0, 15, 0, 15)
+            gearIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
+            gearIcon.BackgroundTransparency = 1
+            gearIcon.Image = "rbxassetid://10734950309" -- Lucide Sliders/Settings icon
+            gearIcon.ImageColor3 = Color3.fromRGB(160, 175, 210)
+            gearIcon.ZIndex = 5
+            gearIcon.Parent = gearBadge
 
             local subDrawer = Instance.new("Frame")
             subDrawer.Name = "SubSettingsDrawer"
-            subDrawer.Size = UDim2.new(1, -12, 0, 0)
-            subDrawer.Position = UDim2.new(0, 6, 0, 52)
-            subDrawer.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+            subDrawer.Size = UDim2.new(1, -4, 0, 0)
+            subDrawer.Position = UDim2.new(0, 2, 0, 54)
+            subDrawer.BackgroundColor3 = Color3.fromRGB(18, 19, 27)
             subDrawer.BorderSizePixel = 0
+            subDrawer.ClipsDescendants = true
+            subDrawer.Visible = false
             subDrawer.Parent = wrapper
-            Instance.new("UICorner", subDrawer).CornerRadius = UDim.new(0, 9)
+            Instance.new("UICorner", subDrawer).CornerRadius = UDim.new(0, 10)
 
             local subDrawerStroke = Instance.new("UIStroke", subDrawer)
-            subDrawerStroke.Color = Color3.fromRGB(50, 95, 175)
+            subDrawerStroke.Color = Color3.fromRGB(48, 62, 95)
             subDrawerStroke.Thickness = 1
-            subDrawerStroke.Transparency = 0.45
-
-            local accentBar = Instance.new("Frame")
-            accentBar.Size = UDim2.new(0, 3, 1, -14)
-            accentBar.Position = UDim2.new(0, 5, 0, 7)
-            accentBar.BackgroundColor3 = Color3.fromRGB(55, 140, 255)
-            accentBar.BorderSizePixel = 0
-            accentBar.Parent = subDrawer
-            Instance.new("UICorner", accentBar).CornerRadius = UDim.new(1, 0)
+            subDrawerStroke.Transparency = 0.35
 
             local subContent = Instance.new("Frame")
             subContent.Name = "SubContent"
-            subContent.Size = UDim2.new(1, -20, 1, 0)
-            subContent.Position = UDim2.new(0, 13, 0, 0)
+            subContent.Size = UDim2.new(1, -16, 1, 0)
+            subContent.Position = UDim2.new(0, 8, 0, 0)
             subContent.BackgroundTransparency = 1
             subContent.Parent = subDrawer
 
@@ -1307,33 +1343,51 @@ do
                 if interactionState ~= "IDLE" then return end
                 isExpanded = not isExpanded
                 local contentHeight = subLayout.AbsoluteContentSize.Y + 16
-                subDrawer.Size = UDim2.new(1, -12, 0, contentHeight)
 
                 if isExpanded then
-                    gearBadge.Text = "▴"
-                    TweenService:Create(gearBadge, TweenInfo.new(0.2), {
-                        BackgroundColor3 = Color3.fromRGB(50, 120, 240),
-                        TextColor3 = Color3.fromRGB(255, 255, 255)
+                    subDrawer.Visible = true
+                    subDrawer.Size = UDim2.new(1, -4, 0, contentHeight)
+
+                    TweenService:Create(gearBadge, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                        BackgroundColor3 = Color3.fromRGB(48, 115, 235)
                     }):Play()
-                    TweenService:Create(rowStroke, TweenInfo.new(0.2), {
+                    TweenService:Create(gearBadgeStroke, TweenInfo.new(0.22), {
+                        Color = Color3.fromRGB(95, 165, 255)
+                    }):Play()
+                    TweenService:Create(gearIcon, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                        Rotation = 90,
+                        ImageColor3 = Color3.fromRGB(255, 255, 255)
+                    }):Play()
+                    TweenService:Create(rowStroke, TweenInfo.new(0.22), {
                         Transparency = 0.25,
-                        Color = Color3.fromRGB(65, 140, 255)
+                        Color = Color3.fromRGB(65, 135, 245)
                     }):Play()
                     TweenService:Create(wrapper, TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-                        Size = UDim2.new(1, -32, 0, 48 + contentHeight + 6)
+                        Size = UDim2.new(1, -32, 0, 48 + contentHeight + 8)
                     }):Play()
                 else
-                    gearBadge.Text = "▾"
-                    TweenService:Create(gearBadge, TweenInfo.new(0.2), {
-                        BackgroundColor3 = Color3.fromRGB(36, 38, 52),
-                        TextColor3 = Color3.fromRGB(145, 165, 205)
+                    TweenService:Create(gearBadge, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                        BackgroundColor3 = Color3.fromRGB(36, 39, 52)
+                    }):Play()
+                    TweenService:Create(gearBadgeStroke, TweenInfo.new(0.2), {
+                        Color = Color3.fromRGB(58, 66, 88)
+                    }):Play()
+                    TweenService:Create(gearIcon, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                        Rotation = 0,
+                        ImageColor3 = Color3.fromRGB(160, 175, 210)
                     }):Play()
                     TweenService:Create(rowStroke, TweenInfo.new(0.2), {
                         Transparency = 1
                     }):Play()
-                    TweenService:Create(wrapper, TweenInfo.new(0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                    local closeTween = TweenService:Create(wrapper, TweenInfo.new(0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
                         Size = UDim2.new(1, -32, 0, 48)
-                    }):Play()
+                    })
+                    closeTween:Play()
+                    closeTween.Completed:Connect(function()
+                        if not isExpanded then
+                            subDrawer.Visible = false
+                        end
+                    end)
                 end
             end
 
@@ -2255,14 +2309,13 @@ local function switchTab(newIndex, targetCenterY, icon, tabName)
         ImageColor3 = Color3.fromRGB(255, 255, 255)
     }):Play()
 
-    local targetCanvasX = (newIndex - 1) * trackViewport.AbsoluteSize.X
+    currentTabIndex = newIndex
     local trackTween = TweenService:Create(pagesTrack, TweenInfo.new(0.48, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
-        CanvasPosition = Vector2.new(targetCanvasX, 0)
+        Position = UDim2.new(-(newIndex - 1), 0, 0, 0)
     })
     trackTween:Play()
 
     trackTween.Completed:Connect(function()
-        currentTabIndex = newIndex
         isAnimating = false
     end)
 end
@@ -2452,7 +2505,7 @@ local function resizeUIByDelta(deltaX, deltaY)
     currentPartWidth = math.clamp(currentPartWidth + (deltaX * studsPerPixel), 3.4, 9.5)
     currentPartHeight = math.clamp(currentPartHeight + (deltaY * studsPerPixel), 2.2, 8.0)
     uiPart.Size = Vector3.new(currentPartWidth, currentPartHeight, 0.05)
-    pagesTrack.CanvasPosition = Vector2.new(((currentTabIndex or 1) - 1) * (trackViewport and trackViewport.AbsoluteSize.X or 0), 0)
+    pagesTrack.Position = UDim2.new(-((currentTabIndex or 1) - 1), 0, 0, 0)
 end
 
 visualBar.InputBegan:Connect(function(input)
@@ -2687,8 +2740,13 @@ summonUIWithAnimation = function()
     mainFrame.Position = UDim2.new(0.42, 0, 0.45, 0)
     grabBarContainer.Position = UDim2.new(0, 0, 1, -15)
 
-    local targetCanvasX = ((currentTabIndex or 1) - 1) * (trackViewport and trackViewport.AbsoluteSize.X or 0)
-    pagesTrack.CanvasPosition = Vector2.new(targetCanvasX, 0)
+    local activeIdx = currentTabIndex or 1
+    pagesTrack.Position = UDim2.new(-(activeIdx - 1), 0, 0, 0)
+    local activeCenterY = 12 + ((activeIdx - 1) * 46) + 18
+    tabIndicator.Position = UDim2.new(0.5, 0, 0, activeCenterY)
+    for idx, ic in ipairs(allTabIcons) do
+        ic.ImageColor3 = (idx == activeIdx) and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 170)
+    end
 
     surfaceGui.Enabled = true
     backSurfaceGui.Enabled = true
