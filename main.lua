@@ -112,7 +112,7 @@ local camlockBtn, camlockStroke, camlockStatusText
 local setCamlockButtonVisible, updateCamlockButtonVisual, triggerCamlockAction
 local setBhopScreenWidgets, triggerAutoJumpAction
 local refreshFlyButtonsVisibility
-local toggleEditWidgetPosition, stopEditingWidgetPosition
+local toggleEditWidgetPosition, stopEditingWidgetPosition, activeFuncListHud
 
 local uiPart, surfaceGui, backSurfaceGui, container, sidebar, mainFrame
 local backMainWindow, backSideWindow, sideSettingsWindow
@@ -150,11 +150,13 @@ do
     local showAutoJumpBtn = true
     local showCamlockBtn = true
     local showFlyButtons = true
+    local showActiveFuncList = true
 
     local speedHudCustomPos = UDim2.new(0, 25, 1, -85)
     local autoJumpCustomPos = UDim2.new(1, -75, 0.65, 0)
     local camlockCustomPos = UDim2.new(1, -75, 0.52, 0)
     local flyButtonsCustomPos = UDim2.new(1, -75, 0.5, -60)
+    local funcListCustomPos = UDim2.new(1, -184, 0, 56)
 
     local activeEditingWidget = nil
     local activeMoveBtnCallback = nil
@@ -167,6 +169,253 @@ do
     screenHudGui.ResetOnSpawn = false
     screenHudGui.DisplayOrder = 997
     screenHudGui.Parent = targetGuiParent
+
+    -- [ 0. Right-Side Active Functions List (ArrayList HUD) ]
+    local funcListContainer = Instance.new("Frame")
+    funcListContainer.Name = "ActiveFunctionsHUD"
+    funcListContainer.Size = UDim2.new(0, 170, 0, 28)
+    funcListContainer.AutomaticSize = Enum.AutomaticSize.Y
+    funcListContainer.Position = funcListCustomPos
+    funcListContainer.BackgroundTransparency = 1
+    funcListContainer.Parent = screenHudGui
+
+    local funcListLayout = Instance.new("UIListLayout")
+    funcListLayout.FillDirection = Enum.FillDirection.Vertical
+    funcListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+    funcListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    funcListLayout.Padding = UDim.new(0, 5)
+    funcListLayout.Parent = funcListContainer
+
+    local funcHeaderPill = Instance.new("Frame")
+    funcHeaderPill.Name = "HeaderBadge"
+    funcHeaderPill.AutomaticSize = Enum.AutomaticSize.X
+    funcHeaderPill.Size = UDim2.new(0, 0, 0, 20)
+    funcHeaderPill.BackgroundColor3 = Color3.fromRGB(14, 16, 24)
+    funcHeaderPill.BackgroundTransparency = 0.25
+    funcHeaderPill.LayoutOrder = 0
+    funcHeaderPill.Visible = false
+    funcHeaderPill.Parent = funcListContainer
+    Instance.new("UICorner", funcHeaderPill).CornerRadius = UDim.new(0, 6)
+
+    local funcHeaderPad = Instance.new("UIPadding", funcHeaderPill)
+    funcHeaderPad.PaddingLeft = UDim.new(0, 8)
+    funcHeaderPad.PaddingRight = UDim.new(0, 8)
+
+    local funcHeaderLabel = Instance.new("TextLabel")
+    funcHeaderLabel.AutomaticSize = Enum.AutomaticSize.X
+    funcHeaderLabel.Size = UDim2.new(0, 0, 1, 0)
+    funcHeaderLabel.BackgroundTransparency = 1
+    funcHeaderLabel.Text = "ACTIVE FUNCTIONS"
+    funcHeaderLabel.TextColor3 = Color3.fromRGB(110, 150, 215)
+    funcHeaderLabel.Font = Enum.Font.GothamBold
+    funcHeaderLabel.TextSize = 9
+    funcHeaderLabel.TextXAlignment = Enum.TextXAlignment.Right
+    funcHeaderLabel.Parent = funcHeaderPill
+
+    local registeredFuncItems = {}
+    local pageToFuncItem = {}
+    local nextFuncOrder = 1
+
+    local function getFormattedKeySuffix(item)
+        local chosenKey = nil
+        -- Prefer Toggle Keybind first if set, otherwise fall back to action keybind (e.g. Auto-Jump / Lock Target)
+        for _, kb in ipairs(item.keybinds) do
+            if kb.entry and kb.entry.key and tostring(kb.label):lower():find("toggle") then
+                chosenKey = kb.entry.key.Name
+                break
+            end
+        end
+        if not chosenKey then
+            for _, kb in ipairs(item.keybinds) do
+                if kb.entry and kb.entry.key then
+                    chosenKey = kb.entry.key.Name
+                    break
+                end
+            end
+        end
+        return chosenKey
+    end
+
+    local function updateSingleFuncPill(item)
+        if not showActiveFuncList or not item.isEnabled then
+            if item.pill.Visible then
+                item.pill.Visible = false
+            end
+            return false
+        end
+
+        local isActuallyActive = true
+        if item.isTwoStage and item.checkSubActive then
+            isActuallyActive = item.checkSubActive() and true or false
+        end
+
+        local keyName = getFormattedKeySuffix(item)
+        if isActuallyActive then
+            -- Active State -> Main UI Blue Accent Color
+            if keyName then
+                item.label.Text = string.format('<font color="#58A6FF">%s</font> <font color="#A6D4FF">[%s]</font>', item.name, keyName)
+            else
+                item.label.Text = string.format('<font color="#58A6FF">%s</font>', item.name)
+            end
+            TweenService:Create(item.accentBar, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                BackgroundColor3 = Color3.fromRGB(50, 145, 255)
+            }):Play()
+            TweenService:Create(item.stroke, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                Color = Color3.fromRGB(55, 135, 255),
+                Transparency = 0.25
+            }):Play()
+            TweenService:Create(item.pill, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                BackgroundColor3 = Color3.fromRGB(16, 20, 30),
+                BackgroundTransparency = 0.16
+            }):Play()
+        else
+            -- Standby State (Two-stage function enabled in menu, waiting for actual trigger) -> Gray Color
+            if keyName then
+                item.label.Text = string.format('<font color="#8C92A4">%s</font> <font color="#707688">[%s]</font>', item.name, keyName)
+            else
+                item.label.Text = string.format('<font color="#8C92A4">%s</font>', item.name)
+            end
+            TweenService:Create(item.accentBar, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                BackgroundColor3 = Color3.fromRGB(100, 105, 120)
+            }):Play()
+            TweenService:Create(item.stroke, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                Color = Color3.fromRGB(75, 78, 92),
+                Transparency = 0.45
+            }):Play()
+            TweenService:Create(item.pill, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                BackgroundColor3 = Color3.fromRGB(20, 21, 27),
+                BackgroundTransparency = 0.3
+            }):Play()
+        end
+
+        if not item.pill.Visible then
+            item.pill.Visible = true
+            item.scale.Scale = 0.8
+            TweenService:Create(item.scale, TweenInfo.new(0.26, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Scale = 1
+            }):Play()
+        elseif item.lastActiveState ~= isActuallyActive then
+            item.scale.Scale = 1.07
+            TweenService:Create(item.scale, TweenInfo.new(0.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Scale = 1
+            }):Play()
+        end
+        item.lastActiveState = isActuallyActive
+        return true
+    end
+
+    local function refreshAllFuncPills()
+        funcListContainer.Position = funcListCustomPos
+        local anyVisible = false
+        for _, item in ipairs(registeredFuncItems) do
+            if updateSingleFuncPill(item) then
+                anyVisible = true
+            end
+        end
+        funcHeaderPill.Visible = (showActiveFuncList and anyVisible) or (activeEditingWidget == "funcList")
+        funcListContainer.Visible = showActiveFuncList or (activeEditingWidget == "funcList")
+    end
+
+    activeFuncListHud = {
+        register = function(funcName)
+            if funcName == "Active Functions List" then return nil end
+
+            local isTwoStage = false
+            local checkSubActive = nil
+            if funcName:find("Bunny Hop") then
+                isTwoStage = true
+                checkSubActive = function() return autoJumpActive end
+            elseif funcName:find("Camlock") then
+                isTwoStage = true
+                checkSubActive = function() return isTargetLocked end
+            end
+
+            local pill = Instance.new("Frame")
+            pill.Name = funcName .. "_Pill"
+            pill.AutomaticSize = Enum.AutomaticSize.X
+            pill.Size = UDim2.new(0, 0, 0, 26)
+            pill.BackgroundColor3 = Color3.fromRGB(16, 20, 30)
+            pill.BackgroundTransparency = 0.18
+            pill.BorderSizePixel = 0
+            pill.LayoutOrder = nextFuncOrder
+            nextFuncOrder = nextFuncOrder + 1
+            pill.Visible = false
+            pill.Parent = funcListContainer
+            Instance.new("UICorner", pill).CornerRadius = UDim.new(0, 7)
+
+            local scale = Instance.new("UIScale", pill)
+            scale.Scale = 1
+
+            local stroke = Instance.new("UIStroke", pill)
+            stroke.Color = Color3.fromRGB(55, 135, 255)
+            stroke.Thickness = 1.2
+            stroke.Transparency = 0.25
+
+            local pad = Instance.new("UIPadding", pill)
+            pad.PaddingLeft = UDim.new(0, 10)
+            pad.PaddingRight = UDim.new(0, 14)
+
+            local accentBar = Instance.new("Frame")
+            accentBar.Name = "AccentBar"
+            accentBar.AnchorPoint = Vector2.new(1, 0.5)
+            accentBar.Size = UDim2.new(0, 3, 0, 14)
+            accentBar.Position = UDim2.new(1, 9, 0.5, 0)
+            accentBar.BackgroundColor3 = Color3.fromRGB(50, 145, 255)
+            accentBar.BorderSizePixel = 0
+            accentBar.Parent = pill
+            Instance.new("UICorner", accentBar).CornerRadius = UDim.new(1, 0)
+
+            local label = Instance.new("TextLabel")
+            label.AutomaticSize = Enum.AutomaticSize.X
+            label.Size = UDim2.new(0, 0, 1, 0)
+            label.BackgroundTransparency = 1
+            label.Font = Enum.Font.GothamBold
+            label.TextSize = 12
+            label.RichText = true
+            label.TextColor3 = Color3.fromRGB(235, 242, 255)
+            label.TextXAlignment = Enum.TextXAlignment.Right
+            label.Text = funcName
+            label.Parent = pill
+
+            local item = {
+                name = funcName,
+                isEnabled = false,
+                isTwoStage = isTwoStage,
+                checkSubActive = checkSubActive,
+                lastActiveState = nil,
+                keybinds = {},
+                pill = pill,
+                scale = scale,
+                stroke = stroke,
+                accentBar = accentBar,
+                label = label
+            }
+            table.insert(registeredFuncItems, item)
+            return item
+        end,
+        bindSettingsPage = function(pageFrame, item)
+            if pageFrame and item then
+                pageToFuncItem[pageFrame] = item
+            end
+        end,
+        attachKeybind = function(pageFrame, kbLabel, kbEntry)
+            local item = pageFrame and pageToFuncItem[pageFrame]
+            if item then
+                table.insert(item.keybinds, { label = kbLabel, entry = kbEntry })
+                updateSingleFuncPill(item)
+            end
+        end,
+        setFuncEnabled = function(item, enabled)
+            if not item then return end
+            item.isEnabled = enabled
+            refreshAllFuncPills()
+        end,
+        setHudVisible = function(visible)
+            showActiveFuncList = visible
+            refreshAllFuncPills()
+        end,
+        refresh = refreshAllFuncPills
+    }
 
     -- [ 1. Speedometer HUD (Bottom Left) ]
     hudContainer = Instance.new("CanvasGroup")
@@ -290,6 +539,7 @@ do
             autoJumpStroke.Color = Color3.fromRGB(60, 60, 80)
             TweenService:Create(autoJumpBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(22, 22, 28)}):Play()
         end
+        refreshAllFuncPills()
     end
 
     triggerAutoJumpAction = function()
@@ -397,6 +647,7 @@ do
             camlockStroke.Color = Color3.fromRGB(60, 60, 80)
             TweenService:Create(camlockBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(22, 22, 28)}):Play()
         end
+        refreshAllFuncPills()
     end
 
     local function getNearestPlayerToCamera()
@@ -545,6 +796,7 @@ do
         elseif widgetId == "speedHud" then return hudContainer
         elseif widgetId == "camlock" then return camlockBtn
         elseif widgetId == "flyBtns" then return mobileFlyFrame
+        elseif widgetId == "funcList" then return funcListContainer
         end
         return nil
     end
@@ -555,7 +807,8 @@ do
             editHighlightOverlay.Visible = false
             return
         end
-        editHighlightOverlay.Size = UDim2.new(0, target.AbsoluteSize.X + 8, 0, target.AbsoluteSize.Y + 8)
+        local sizeY = math.max(36, target.AbsoluteSize.Y)
+        editHighlightOverlay.Size = UDim2.new(0, target.AbsoluteSize.X + 8, 0, sizeY + 8)
         editHighlightOverlay.Position = UDim2.new(0, target.AbsolutePosition.X - 4, 0, target.AbsolutePosition.Y - 4)
         editHighlightOverlay.Visible = true
     end
@@ -572,6 +825,7 @@ do
         setBhopScreenWidgets(bhopEnabled)
         setCamlockButtonVisible(camlockEnabled)
         refreshFlyButtonsVisibility()
+        refreshAllFuncPills()
     end
 
     toggleEditWidgetPosition = function(widgetId, onStateChange)
@@ -590,6 +844,7 @@ do
         setBhopScreenWidgets(bhopEnabled)
         setCamlockButtonVisible(camlockEnabled)
         refreshFlyButtonsVisibility()
+        refreshAllFuncPills()
 
         task.defer(syncOverlayToTarget)
     end
@@ -630,6 +885,8 @@ do
                     camlockCustomPos = newUDim
                 elseif activeEditingWidget == "flyBtns" then
                     flyButtonsCustomPos = newUDim
+                elseif activeEditingWidget == "funcList" then
+                    funcListCustomPos = newUDim
                 end
                 syncOverlayToTarget()
             end
@@ -1500,10 +1757,16 @@ do
                 keyStroke.Color = entry.key and Color3.fromRGB(70, 125, 198) or Color3.fromRGB(60, 66, 86)
                 TweenService:Create(keyBtn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(36, 39, 52)}):Play()
             end
+            if activeFuncListHud then
+                activeFuncListHud.refresh()
+            end
         end
 
         entry.updateVisual(false)
         table.insert(registeredKeybinds, entry)
+        if activeFuncListHud then
+            activeFuncListHud.attachKeybind(parent, name, entry)
+        end
 
         keyBtn.Activated:Connect(function()
             if interactionState ~= "IDLE" then return end
@@ -1559,6 +1822,11 @@ do
         toggleBtn.Parent = row
         Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 6)
 
+        local hudItem = activeFuncListHud and activeFuncListHud.register(name) or nil
+        if hudItem and defaultState then
+            activeFuncListHud.setFuncEnabled(hudItem, true)
+        end
+
         local isToggled = defaultState
         local function setToggleState(newState)
             isToggled = newState
@@ -1570,6 +1838,9 @@ do
                 TweenService:Create(toggleBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(60, 60, 75), TextColor3 = Color3.fromRGB(200, 200, 200)}):Play()
             end
             onToggle(isToggled)
+            if activeFuncListHud and hudItem then
+                activeFuncListHud.setFuncEnabled(hudItem, isToggled)
+            end
         end
 
         toggleBtn.Activated:Connect(function()
@@ -1645,6 +1916,10 @@ do
             subPad.PaddingLeft = UDim.new(0, 10)
             subPad.PaddingRight = UDim.new(0, 10)
             subPad.Parent = settingsPageFrame
+
+            if activeFuncListHud and hudItem then
+                activeFuncListHud.bindSettingsPage(settingsPageFrame, hudItem)
+            end
 
             setupSubSettings(settingsPageFrame, rowController)
 
@@ -2167,9 +2442,20 @@ end, 3, function(sub, rowCtrl)
 end)
 
 -- [ TAB 3: SETTINGS & UTILITY ]
+createToggleRow(settingsPage, "Active Functions List", true, function(v)
+    if activeFuncListHud then
+        activeFuncListHud.setHudVisible(v)
+    end
+end, 1, function(sub, rowCtrl)
+    createMovePositionRow(sub, "Function List Position", "funcList", 1)
+    createKeybindRow(sub, "Toggle List Keybind", nil, function()
+        rowCtrl.toggle()
+    end, 2)
+end)
+
 createToggleRow(settingsPage, "Anti-AFK (20m Kick Guard)", false, function(v)
     antiAfkEnabled = v
-end, 1, function(sub, rowCtrl)
+end, 2, function(sub, rowCtrl)
     createKeybindRow(sub, "Toggle Keybind", nil, function()
         rowCtrl.toggle()
     end, 1)
@@ -2177,7 +2463,7 @@ end)
 
 createActionButton(settingsPage, "Server Rejoin", "Rejoin", function()
     TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, player)
-end, 2)
+end, 3)
 
 end -- [End Universal Features Block]
 
@@ -2534,35 +2820,42 @@ local function toggleAccessories()
 end
 
 -- Populate Wardrobe Options
-createToggleRow(wardrobePage, "Freeze Pose (Mannequin)", false, function(v)
+local wardrobeToggleControllers = {}
+
+table.insert(wardrobeToggleControllers, createToggleRow(wardrobePage, "Freeze Pose (Mannequin)", false, function(v)
     setFreezePose(v)
-end, 1)
+end, 1))
 
-createToggleRow(wardrobePage, "Rainbow Chroma Skin", false, function(v)
+table.insert(wardrobeToggleControllers, createToggleRow(wardrobePage, "Rainbow Chroma Skin", false, function(v)
     setRainbowSkin(v)
-end, 2)
+end, 2))
 
-createToggleRow(wardrobePage, "Ghost Mode (50% Alpha)", false, function(v)
+table.insert(wardrobeToggleControllers, createToggleRow(wardrobePage, "Ghost Mode (50% Alpha)", false, function(v)
     setGhostMode(v)
-end, 3)
+end, 3))
 
-createToggleRow(wardrobePage, "Forcefield Shield", false, function(v)
+table.insert(wardrobeToggleControllers, createToggleRow(wardrobePage, "Forcefield Shield", false, function(v)
     setForcefield(v)
-end, 4)
+end, 4))
 
-createToggleRow(wardrobePage, "Neon Glow Body", false, function(v)
+table.insert(wardrobeToggleControllers, createToggleRow(wardrobePage, "Neon Glow Body", false, function(v)
     setNeonGlow(v)
-end, 5)
+end, 5))
 
-createToggleRow(wardrobePage, "Sparkles & Fire Aura", false, function(v)
+table.insert(wardrobeToggleControllers, createToggleRow(wardrobePage, "Sparkles & Fire Aura", false, function(v)
     setAura(v)
-end, 6)
+end, 6))
 
 createActionButton(wardrobePage, "Accessories (Hats)", "Toggle", function()
     toggleAccessories()
 end, 7)
 
 createActionButton(wardrobePage, "Reset Look & Effects", "Reset", function()
+    for _, ctrl in ipairs(wardrobeToggleControllers) do
+        if ctrl and ctrl.getState and ctrl.getState() then
+            ctrl.setState(false)
+        end
+    end
     restoreCharacterAppearance()
 end, 8)
 
