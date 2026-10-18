@@ -2558,9 +2558,11 @@ wardrobeBackStroke.Thickness = 1
 
 local wardrobeBackIcon = Instance.new("ImageLabel")
 wardrobeBackIcon.Size = UDim2.new(0, 16, 0, 16)
-wardrobeBackIcon.Position = UDim2.new(0.5, -8, 0.5, -8)
+wardrobeBackIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+wardrobeBackIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
 wardrobeBackIcon.BackgroundTransparency = 1
-wardrobeBackIcon.Image = "rbxassetid://10709791437" -- Lucide arrow-left
+wardrobeBackIcon.Image = "rbxassetid://10709791437"
+wardrobeBackIcon.Rotation = 180
 wardrobeBackIcon.ImageColor3 = Color3.fromRGB(205, 220, 245)
 wardrobeBackIcon.Parent = wardrobeBackBtn
 
