@@ -772,7 +772,6 @@ mainFrame.Position = UDim2.new(0, 60, 0, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
 mainFrame.BorderSizePixel = 0
 mainFrame.ClipsDescendants = true
-mainFrame.ZIndex = 2
 mainFrame.Parent = container
 Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 16)
 
@@ -792,6 +791,7 @@ titleLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
 titleLabel.TextSize = 16
 titleLabel.Font = Enum.Font.GothamBold
 titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.ZIndex = 3
 titleLabel.Parent = mainFrame
 
 local titleThread = nil
@@ -822,6 +822,7 @@ closeBtn.Text = "X"
 closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 closeBtn.Font = Enum.Font.GothamBold
 closeBtn.TextSize = 14
+closeBtn.ZIndex = 3
 closeBtn.Parent = mainFrame
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
 
@@ -833,6 +834,7 @@ minBtn.Text = "-"
 minBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
 minBtn.Font = Enum.Font.GothamBold
 minBtn.TextSize = 18
+minBtn.ZIndex = 3
 minBtn.Parent = mainFrame
 Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 6)
 
