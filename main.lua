@@ -115,6 +115,10 @@ local refreshFlyButtonsVisibility
 local toggleEditWidgetPosition, stopEditingWidgetPosition
 
 local uiPart, surfaceGui, backSurfaceGui, container, sidebar, mainFrame
+local backMainWindow, backSideWindow, sideSettingsWindow
+local isSideSettingsOpen = false
+local SIDE_PANEL_STUDS = 2.38
+local closeSideSettingsWindow
 local tabIndicator, titleLabel, closeBtn, minBtn, trackViewport, pagesTrack, grabBarContainer
 local currentPartWidth, currentPartHeight = 4.8, 3.8
 local currentTabIndex = 1
@@ -701,7 +705,7 @@ local backSidebarStroke = Instance.new("UIStroke", backSidebar)
 backSidebarStroke.Color = Color3.fromRGB(55, 55, 70)
 backSidebarStroke.Thickness = 1.5
 
-local backMainWindow = Instance.new("Frame")
+backMainWindow = Instance.new("Frame")
 backMainWindow.Name = "BackMainWindow"
 backMainWindow.Size = UDim2.new(1, -60, 1, -55)
 backMainWindow.Position = UDim2.new(0, 0, 0, 0)
@@ -713,6 +717,20 @@ Instance.new("UICorner", backMainWindow).CornerRadius = UDim.new(0, 16)
 local backMainStroke = Instance.new("UIStroke", backMainWindow)
 backMainStroke.Color = Color3.fromRGB(65, 65, 80)
 backMainStroke.Thickness = 1.5
+
+backSideWindow = Instance.new("Frame")
+backSideWindow.Name = "BackSideSettingsWindow"
+backSideWindow.Size = UDim2.new(0, 230, 1, -55)
+backSideWindow.Position = UDim2.new(0, 0, 0, 0)
+backSideWindow.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+backSideWindow.BorderSizePixel = 0
+backSideWindow.Visible = false
+backSideWindow.Parent = backContainer
+Instance.new("UICorner", backSideWindow).CornerRadius = UDim.new(0, 16)
+
+local backSideStroke = Instance.new("UIStroke", backSideWindow)
+backSideStroke.Color = Color3.fromRGB(65, 95, 145)
+backSideStroke.Thickness = 1.5
 
 -- Front Sidebar
 sidebar = Instance.new("Frame")
@@ -860,11 +878,184 @@ visualsPage = createPageColumn(2)
 settingsPage = createPageColumn(3)
 
 -- ====================================================================
--- Universal UI Component Builder (Right-Click Sub-Settings & Keybinds)
+-- Universal UI Component Builder (Side Settings Window & Keybinds)
 -- ====================================================================
 do
     local registeredKeybinds = {}
     local activeBindingEntry = nil
+    local activeSettingsOwner = nil
+
+    -- Separate Floating Side Settings Window (Right Side of MainWindow)
+    sideSettingsWindow = Instance.new("CanvasGroup")
+    sideSettingsWindow.Name = "SideSettingsWindow"
+    sideSettingsWindow.Size = UDim2.new(0, 230, 1, -55)
+    sideSettingsWindow.Position = UDim2.new(1, -210, 0, 0)
+    sideSettingsWindow.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+    sideSettingsWindow.BorderSizePixel = 0
+    sideSettingsWindow.GroupTransparency = 1
+    sideSettingsWindow.Visible = false
+    sideSettingsWindow.Parent = container
+    Instance.new("UICorner", sideSettingsWindow).CornerRadius = UDim.new(0, 16)
+
+    local sideWindowStroke = Instance.new("UIStroke", sideSettingsWindow)
+    sideWindowStroke.Color = Color3.fromRGB(65, 115, 195)
+    sideWindowStroke.Thickness = 1.5
+
+    local sideHeaderIcon = Instance.new("ImageLabel")
+    sideHeaderIcon.Size = UDim2.new(0, 16, 0, 16)
+    sideHeaderIcon.Position = UDim2.new(0, 14, 0, 12)
+    sideHeaderIcon.BackgroundTransparency = 1
+    sideHeaderIcon.Image = "rbxassetid://10734950309"
+    sideHeaderIcon.ImageColor3 = Color3.fromRGB(95, 175, 255)
+    sideHeaderIcon.Parent = sideSettingsWindow
+
+    local sideWindowTitle = Instance.new("TextLabel")
+    sideWindowTitle.Size = UDim2.new(1, -70, 0, 20)
+    sideWindowTitle.Position = UDim2.new(0, 36, 0, 8)
+    sideWindowTitle.BackgroundTransparency = 1
+    sideWindowTitle.Text = "Settings"
+    sideWindowTitle.TextColor3 = Color3.fromRGB(235, 240, 255)
+    sideWindowTitle.Font = Enum.Font.GothamBold
+    sideWindowTitle.TextSize = 13
+    sideWindowTitle.TextXAlignment = Enum.TextXAlignment.Left
+    sideWindowTitle.TextTruncate = Enum.TextTruncate.AtEnd
+    sideWindowTitle.Parent = sideSettingsWindow
+
+    local sideWindowSub = Instance.new("TextLabel")
+    sideWindowSub.Size = UDim2.new(1, -70, 0, 12)
+    sideWindowSub.Position = UDim2.new(0, 36, 0, 26)
+    sideWindowSub.BackgroundTransparency = 1
+    sideWindowSub.Text = "FUNCTION CONFIG"
+    sideWindowSub.TextColor3 = Color3.fromRGB(105, 130, 175)
+    sideWindowSub.Font = Enum.Font.GothamBold
+    sideWindowSub.TextSize = 9
+    sideWindowSub.TextXAlignment = Enum.TextXAlignment.Left
+    sideWindowSub.Parent = sideSettingsWindow
+
+    local sideCloseBtn = Instance.new("TextButton")
+    sideCloseBtn.Size = UDim2.new(0, 24, 0, 24)
+    sideCloseBtn.Position = UDim2.new(1, -32, 0, 10)
+    sideCloseBtn.BackgroundColor3 = Color3.fromRGB(42, 44, 58)
+    sideCloseBtn.Text = "X"
+    sideCloseBtn.TextColor3 = Color3.fromRGB(210, 215, 230)
+    sideCloseBtn.Font = Enum.Font.GothamBold
+    sideCloseBtn.TextSize = 12
+    sideCloseBtn.Parent = sideSettingsWindow
+    Instance.new("UICorner", sideCloseBtn).CornerRadius = UDim.new(0, 6)
+
+    local sideDivider = Instance.new("Frame")
+    sideDivider.Size = UDim2.new(1, -24, 0, 1)
+    sideDivider.Position = UDim2.new(0, 12, 0, 44)
+    sideDivider.BackgroundColor3 = Color3.fromRGB(45, 52, 72)
+    sideDivider.BorderSizePixel = 0
+    sideDivider.Parent = sideSettingsWindow
+
+    local sideContentHost = Instance.new("Frame")
+    sideContentHost.Name = "SideContentHost"
+    sideContentHost.Size = UDim2.new(1, 0, 1, -48)
+    sideContentHost.Position = UDim2.new(0, 0, 0, 48)
+    sideContentHost.BackgroundTransparency = 1
+    sideContentHost.ClipsDescendants = true
+    sideContentHost.Parent = sideSettingsWindow
+
+    closeSideSettingsWindow = function(instant)
+        if activeSettingsOwner then
+            activeSettingsOwner.setHighlight(false)
+            if activeSettingsOwner.page then
+                activeSettingsOwner.page.Visible = false
+            end
+            activeSettingsOwner = nil
+        end
+        if not isSideSettingsOpen then return end
+        isSideSettingsOpen = false
+        backSideWindow.Visible = false
+        mainFrame.Size = UDim2.new(1, -60, 1, -55)
+        backMainWindow.Size = UDim2.new(1, -60, 1, -55)
+        backMainWindow.Position = UDim2.new(0, 0, 0, 0)
+
+        if instant or not isUIVisible then
+            sideSettingsWindow.Visible = false
+            sideSettingsWindow.GroupTransparency = 1
+            if isUIVisible and uiPart then
+                uiPart.Size = Vector3.new(currentPartWidth, currentPartHeight, 0.05)
+            end
+            return
+        end
+
+        TweenService:Create(uiPart, TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            Size = Vector3.new(currentPartWidth, currentPartHeight, 0.05)
+        }):Play()
+
+        local fadeOut = TweenService:Create(sideSettingsWindow, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+            GroupTransparency = 1,
+            Position = UDim2.new(1, -205, 0, 0)
+        })
+        fadeOut:Play()
+        fadeOut.Completed:Connect(function()
+            if not isSideSettingsOpen then
+                sideSettingsWindow.Visible = false
+            end
+        end)
+    end
+
+    local function openSideSettingsFor(ownerEntry)
+        if interactionState ~= "IDLE" then return end
+
+        -- Clicking the same function again closes the side window
+        if activeSettingsOwner == ownerEntry and isSideSettingsOpen then
+            closeSideSettingsWindow(false)
+            return
+        end
+
+        -- Only ONE function's settings can be open at a time: deactivate previous owner
+        if activeSettingsOwner and activeSettingsOwner ~= ownerEntry then
+            activeSettingsOwner.setHighlight(false)
+            if activeSettingsOwner.page then
+                activeSettingsOwner.page.Visible = false
+            end
+        end
+
+        activeSettingsOwner = ownerEntry
+        ownerEntry.setHighlight(true)
+        sideWindowTitle.Text = ownerEntry.name
+
+        if ownerEntry.page then
+            ownerEntry.page.CanvasPosition = Vector2.zero
+            ownerEntry.page.Visible = true
+        end
+
+        if not isSideSettingsOpen then
+            isSideSettingsOpen = true
+            mainFrame.Size = UDim2.new(1, -298, 1, -55)
+            backMainWindow.Size = UDim2.new(1, -298, 1, -55)
+            backMainWindow.Position = UDim2.new(0, 238, 0, 0)
+            backSideWindow.Visible = true
+
+            sideSettingsWindow.Position = UDim2.new(1, -205, 0, 0)
+            sideSettingsWindow.GroupTransparency = 1
+            sideSettingsWindow.Visible = true
+
+            TweenService:Create(uiPart, TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Size = Vector3.new(currentPartWidth + SIDE_PANEL_STUDS, currentPartHeight, 0.05)
+            }):Play()
+
+            TweenService:Create(sideSettingsWindow, TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                GroupTransparency = 0,
+                Position = UDim2.new(1, -230, 0, 0)
+            }):Play()
+        else
+            -- Subtle bounce when switching from one function's settings to another
+            sideSettingsWindow.Position = UDim2.new(1, -220, 0, 0)
+            TweenService:Create(sideSettingsWindow, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                Position = UDim2.new(1, -230, 0, 0)
+            }):Play()
+        end
+    end
+
+    sideCloseBtn.Activated:Connect(function()
+        if interactionState ~= "IDLE" then return end
+        closeSideSettingsWindow(false)
+    end)
 
     local function formatKeyName(keyCode)
         if not keyCode then return "None" end
@@ -930,13 +1121,13 @@ do
         label.Text = name
         label.TextColor3 = Color3.fromRGB(205, 215, 235)
         label.Font = Enum.Font.GothamBold
-        label.TextSize = 12
+        label.TextSize = 11
         label.TextXAlignment = Enum.TextXAlignment.Left
         label.Parent = row
 
         local valBadge = Instance.new("Frame")
-        valBadge.Size = UDim2.new(0, 46, 0, 18)
-        valBadge.Position = UDim2.new(1, -56, 0, 6)
+        valBadge.Size = UDim2.new(0, 42, 0, 18)
+        valBadge.Position = UDim2.new(1, -50, 0, 6)
         valBadge.BackgroundColor3 = Color3.fromRGB(34, 42, 62)
         valBadge.BorderSizePixel = 0
         valBadge.Parent = row
@@ -1023,7 +1214,7 @@ do
 
     createSubToggle = function(parent, name, defaultState, onToggle, order)
         local row = Instance.new("Frame")
-        row.Size = UDim2.new(1, 0, 0, 36)
+        row.Size = UDim2.new(1, 0, 0, 38)
         row.BackgroundColor3 = Color3.fromRGB(25, 27, 37)
         row.LayoutOrder = order or 1
         row.Parent = parent
@@ -1032,19 +1223,20 @@ do
         attachSubItemDecor(row, Color3.fromRGB(65, 205, 130))
 
         local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(0.62, 0, 1, 0)
-        label.Position = UDim2.new(0, 21, 0, 0)
+        label.Size = UDim2.new(1, -82, 1, 0)
+        label.Position = UDim2.new(0, 20, 0, 0)
         label.BackgroundTransparency = 1
         label.Text = name
         label.TextColor3 = Color3.fromRGB(205, 215, 235)
         label.Font = Enum.Font.GothamBold
-        label.TextSize = 12
+        label.TextSize = 11
         label.TextXAlignment = Enum.TextXAlignment.Left
+        label.TextTruncate = Enum.TextTruncate.AtEnd
         label.Parent = row
 
         local toggleBtn = Instance.new("TextButton")
-        toggleBtn.Size = UDim2.new(0, 62, 0, 22)
-        toggleBtn.Position = UDim2.new(1, -72, 0.5, -11)
+        toggleBtn.Size = UDim2.new(0, 54, 0, 22)
+        toggleBtn.Position = UDim2.new(1, -62, 0.5, -11)
         toggleBtn.BackgroundColor3 = defaultState and Color3.fromRGB(45, 180, 100) or Color3.fromRGB(48, 50, 66)
         toggleBtn.Text = defaultState and "ON" or "OFF"
         toggleBtn.TextColor3 = defaultState and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(175, 180, 198)
@@ -1071,7 +1263,7 @@ do
 
     createMovePositionRow = function(parent, name, widgetId, order)
         local row = Instance.new("Frame")
-        row.Size = UDim2.new(1, 0, 0, 36)
+        row.Size = UDim2.new(1, 0, 0, 38)
         row.BackgroundColor3 = Color3.fromRGB(25, 27, 37)
         row.LayoutOrder = order or 1
         row.Parent = parent
@@ -1080,24 +1272,25 @@ do
         attachSubItemDecor(row, Color3.fromRGB(90, 175, 255))
 
         local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(0.58, 0, 1, 0)
-        label.Position = UDim2.new(0, 21, 0, 0)
+        label.Size = UDim2.new(1, -96, 1, 0)
+        label.Position = UDim2.new(0, 20, 0, 0)
         label.BackgroundTransparency = 1
         label.Text = name
         label.TextColor3 = Color3.fromRGB(205, 215, 235)
         label.Font = Enum.Font.GothamBold
-        label.TextSize = 12
+        label.TextSize = 11
         label.TextXAlignment = Enum.TextXAlignment.Left
+        label.TextTruncate = Enum.TextTruncate.AtEnd
         label.Parent = row
 
         local moveBtn = Instance.new("TextButton")
-        moveBtn.Size = UDim2.new(0, 84, 0, 22)
-        moveBtn.Position = UDim2.new(1, -94, 0.5, -11)
+        moveBtn.Size = UDim2.new(0, 68, 0, 22)
+        moveBtn.Position = UDim2.new(1, -76, 0.5, -11)
         moveBtn.BackgroundColor3 = Color3.fromRGB(45, 110, 215)
         moveBtn.Text = "Move Pos"
         moveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
         moveBtn.Font = Enum.Font.GothamBold
-        moveBtn.TextSize = 11
+        moveBtn.TextSize = 10
         moveBtn.Parent = row
         Instance.new("UICorner", moveBtn).CornerRadius = UDim.new(0, 6)
 
@@ -1120,7 +1313,7 @@ do
 
     createKeybindRow = function(parent, name, defaultKeyCode, onTrigger, order)
         local row = Instance.new("Frame")
-        row.Size = UDim2.new(1, 0, 0, 36)
+        row.Size = UDim2.new(1, 0, 0, 38)
         row.BackgroundColor3 = Color3.fromRGB(25, 27, 37)
         row.LayoutOrder = order or 1
         row.Parent = parent
@@ -1129,24 +1322,25 @@ do
         attachSubItemDecor(row, Color3.fromRGB(165, 130, 255))
 
         local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(0.56, 0, 1, 0)
-        label.Position = UDim2.new(0, 21, 0, 0)
+        label.Size = UDim2.new(1, -96, 1, 0)
+        label.Position = UDim2.new(0, 20, 0, 0)
         label.BackgroundTransparency = 1
         label.Text = name
         label.TextColor3 = Color3.fromRGB(205, 215, 235)
         label.Font = Enum.Font.GothamBold
-        label.TextSize = 12
+        label.TextSize = 11
         label.TextXAlignment = Enum.TextXAlignment.Left
+        label.TextTruncate = Enum.TextTruncate.AtEnd
         label.Parent = row
 
         local keyBtn = Instance.new("TextButton")
-        keyBtn.Size = UDim2.new(0, 84, 0, 22)
-        keyBtn.Position = UDim2.new(1, -94, 0.5, -11)
+        keyBtn.Size = UDim2.new(0, 68, 0, 22)
+        keyBtn.Position = UDim2.new(1, -76, 0.5, -11)
         keyBtn.BackgroundColor3 = Color3.fromRGB(36, 39, 52)
         keyBtn.Text = formatKeyName(defaultKeyCode)
         keyBtn.TextColor3 = Color3.fromRGB(150, 205, 255)
         keyBtn.Font = Enum.Font.GothamBold
-        keyBtn.TextSize = 11
+        keyBtn.TextSize = 10
         keyBtn.Parent = row
         Instance.new("UICorner", keyBtn).CornerRadius = UDim.new(0, 6)
 
@@ -1162,7 +1356,7 @@ do
 
         entry.updateVisual = function(listening)
             if listening then
-                keyBtn.Text = "Press Key.."
+                keyBtn.Text = "Press.."
                 keyBtn.TextColor3 = Color3.fromRGB(255, 215, 90)
                 keyStroke.Color = Color3.fromRGB(255, 190, 60)
                 TweenService:Create(keyBtn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(58, 46, 26)}):Play()
@@ -1195,17 +1389,11 @@ do
     end
 
     createToggleRow = function(parent, name, defaultState, onToggle, order, setupSubSettings)
-        local wrapper = Instance.new("Frame")
-        wrapper.Size = UDim2.new(1, -32, 0, 48)
-        wrapper.BackgroundTransparency = 1
-        wrapper.ClipsDescendants = true
-        wrapper.LayoutOrder = order or 1
-        wrapper.Parent = parent
-
         local row = Instance.new("Frame")
-        row.Size = UDim2.new(1, 0, 0, 48)
+        row.Size = UDim2.new(1, -32, 0, 48)
         row.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
-        row.Parent = wrapper
+        row.LayoutOrder = order or 1
+        row.Parent = parent
         Instance.new("UICorner", row).CornerRadius = UDim.new(0, 10)
 
         local rowStroke = Instance.new("UIStroke", row)
@@ -1256,7 +1444,7 @@ do
         end)
 
         local rowController = {
-            frame = wrapper,
+            frame = row,
             toggle = function()
                 setToggleState(not isToggled)
             end,
@@ -1265,7 +1453,6 @@ do
         }
 
         if setupSubSettings then
-            -- Right-Click Hitbox & Lucide Settings Icon Button
             local rightClickCapture = Instance.new("TextButton")
             rightClickCapture.Name = "RightClickSettingsTrigger"
             rightClickCapture.Size = UDim2.new(1, 0, 1, 0)
@@ -1296,106 +1483,80 @@ do
             gearIcon.Size = UDim2.new(0, 15, 0, 15)
             gearIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
             gearIcon.BackgroundTransparency = 1
-            gearIcon.Image = "rbxassetid://10734950309" -- Lucide Sliders/Settings icon
+            gearIcon.Image = "rbxassetid://10734950309"
             gearIcon.ImageColor3 = Color3.fromRGB(160, 175, 210)
             gearIcon.ZIndex = 5
             gearIcon.Parent = gearBadge
 
-            local subDrawer = Instance.new("Frame")
-            subDrawer.Name = "SubSettingsDrawer"
-            subDrawer.Size = UDim2.new(1, -4, 0, 0)
-            subDrawer.Position = UDim2.new(0, 2, 0, 54)
-            subDrawer.BackgroundColor3 = Color3.fromRGB(18, 19, 27)
-            subDrawer.BorderSizePixel = 0
-            subDrawer.ClipsDescendants = true
-            subDrawer.Visible = false
-            subDrawer.Parent = wrapper
-            Instance.new("UICorner", subDrawer).CornerRadius = UDim.new(0, 10)
-
-            local subDrawerStroke = Instance.new("UIStroke", subDrawer)
-            subDrawerStroke.Color = Color3.fromRGB(48, 62, 95)
-            subDrawerStroke.Thickness = 1
-            subDrawerStroke.Transparency = 0.35
-
-            local subContent = Instance.new("Frame")
-            subContent.Name = "SubContent"
-            subContent.Size = UDim2.new(1, -16, 1, 0)
-            subContent.Position = UDim2.new(0, 8, 0, 0)
-            subContent.BackgroundTransparency = 1
-            subContent.Parent = subDrawer
+            local settingsPageFrame = Instance.new("ScrollingFrame")
+            settingsPageFrame.Name = name .. "_SideSettings"
+            settingsPageFrame.Size = UDim2.new(1, 0, 1, 0)
+            settingsPageFrame.BackgroundTransparency = 1
+            settingsPageFrame.BorderSizePixel = 0
+            settingsPageFrame.ScrollBarThickness = 2
+            settingsPageFrame.ScrollBarImageColor3 = Color3.fromRGB(75, 95, 135)
+            settingsPageFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+            settingsPageFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+            settingsPageFrame.Visible = false
+            settingsPageFrame.Parent = sideContentHost
 
             local subLayout = Instance.new("UIListLayout")
-            subLayout.Padding = UDim.new(0, 6)
+            subLayout.Padding = UDim.new(0, 8)
             subLayout.SortOrder = Enum.SortOrder.LayoutOrder
-            subLayout.Parent = subContent
+            subLayout.Parent = settingsPageFrame
 
             local subPad = Instance.new("UIPadding")
             subPad.PaddingTop = UDim.new(0, 8)
-            subPad.PaddingBottom = UDim.new(0, 8)
-            subPad.Parent = subContent
+            subPad.PaddingBottom = UDim.new(0, 12)
+            subPad.PaddingLeft = UDim.new(0, 10)
+            subPad.PaddingRight = UDim.new(0, 10)
+            subPad.Parent = settingsPageFrame
 
-            setupSubSettings(subContent, rowController)
+            setupSubSettings(settingsPageFrame, rowController)
 
-            local isExpanded = false
-            local lastRightClickTick = 0
-
-            local function toggleSubSettings()
-                if interactionState ~= "IDLE" then return end
-                isExpanded = not isExpanded
-                local contentHeight = subLayout.AbsoluteContentSize.Y + 16
-
-                if isExpanded then
-                    subDrawer.Visible = true
-                    subDrawer.Size = UDim2.new(1, -4, 0, contentHeight)
-
-                    TweenService:Create(gearBadge, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-                        BackgroundColor3 = Color3.fromRGB(48, 115, 235)
-                    }):Play()
-                    TweenService:Create(gearBadgeStroke, TweenInfo.new(0.22), {
-                        Color = Color3.fromRGB(95, 165, 255)
-                    }):Play()
-                    TweenService:Create(gearIcon, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                        Rotation = 90,
-                        ImageColor3 = Color3.fromRGB(255, 255, 255)
-                    }):Play()
-                    TweenService:Create(rowStroke, TweenInfo.new(0.22), {
-                        Transparency = 0.25,
-                        Color = Color3.fromRGB(65, 135, 245)
-                    }):Play()
-                    TweenService:Create(wrapper, TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-                        Size = UDim2.new(1, -32, 0, 48 + contentHeight + 8)
-                    }):Play()
-                else
-                    TweenService:Create(gearBadge, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-                        BackgroundColor3 = Color3.fromRGB(36, 39, 52)
-                    }):Play()
-                    TweenService:Create(gearBadgeStroke, TweenInfo.new(0.2), {
-                        Color = Color3.fromRGB(58, 66, 88)
-                    }):Play()
-                    TweenService:Create(gearIcon, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-                        Rotation = 0,
-                        ImageColor3 = Color3.fromRGB(160, 175, 210)
-                    }):Play()
-                    TweenService:Create(rowStroke, TweenInfo.new(0.2), {
-                        Transparency = 1
-                    }):Play()
-                    local closeTween = TweenService:Create(wrapper, TweenInfo.new(0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-                        Size = UDim2.new(1, -32, 0, 48)
-                    })
-                    closeTween:Play()
-                    closeTween.Completed:Connect(function()
-                        if not isExpanded then
-                            subDrawer.Visible = false
-                        end
-                    end)
+            local ownerEntry = {
+                name = name,
+                page = settingsPageFrame,
+                setHighlight = function(active)
+                    if active then
+                        TweenService:Create(gearBadge, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                            BackgroundColor3 = Color3.fromRGB(48, 115, 235)
+                        }):Play()
+                        TweenService:Create(gearBadgeStroke, TweenInfo.new(0.2), {
+                            Color = Color3.fromRGB(95, 165, 255)
+                        }):Play()
+                        TweenService:Create(gearIcon, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                            Rotation = 90,
+                            ImageColor3 = Color3.fromRGB(255, 255, 255)
+                        }):Play()
+                        TweenService:Create(rowStroke, TweenInfo.new(0.2), {
+                            Transparency = 0.2,
+                            Color = Color3.fromRGB(65, 135, 245)
+                        }):Play()
+                    else
+                        TweenService:Create(gearBadge, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                            BackgroundColor3 = Color3.fromRGB(36, 39, 52)
+                        }):Play()
+                        TweenService:Create(gearBadgeStroke, TweenInfo.new(0.2), {
+                            Color = Color3.fromRGB(58, 66, 88)
+                        }):Play()
+                        TweenService:Create(gearIcon, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                            Rotation = 0,
+                            ImageColor3 = Color3.fromRGB(160, 175, 210)
+                        }):Play()
+                        TweenService:Create(rowStroke, TweenInfo.new(0.2), {
+                            Transparency = 1
+                        }):Play()
+                    end
                 end
-            end
+            }
 
+            local lastRightClickTick = 0
             local function onRightClickAttempt()
                 local now = tick()
                 if now - lastRightClickTick < 0.15 then return end
                 lastRightClickTick = now
-                toggleSubSettings()
+                openSideSettingsFor(ownerEntry)
             end
 
             rightClickCapture.MouseButton2Click:Connect(onRightClickAttempt)
@@ -1410,7 +1571,7 @@ do
             end)
         end
 
-        return wrapper, rowController
+        return row, rowController
     end
 
     createSliderRow = function(parent, name, minVal, maxVal, defaultVal, onSliderChange, order)
@@ -2504,7 +2665,8 @@ local function resizeUIByDelta(deltaX, deltaY)
 
     currentPartWidth = math.clamp(currentPartWidth + (deltaX * studsPerPixel), 3.4, 9.5)
     currentPartHeight = math.clamp(currentPartHeight + (deltaY * studsPerPixel), 2.2, 8.0)
-    uiPart.Size = Vector3.new(currentPartWidth, currentPartHeight, 0.05)
+    local totalW = currentPartWidth + (isSideSettingsOpen and SIDE_PANEL_STUDS or 0)
+    uiPart.Size = Vector3.new(totalW, currentPartHeight, 0.05)
     pagesTrack.Position = UDim2.new(-((currentTabIndex or 1) - 1), 0, 0, 0)
 end
 
@@ -2691,6 +2853,10 @@ hideUIWithAnimation = function()
         hideWardrobeWithAnimation()
     end
 
+    if closeSideSettingsWindow then
+        closeSideSettingsWindow(true)
+    end
+
     backSurfaceGui.Enabled = false
 
     TweenService:Create(grabBarContainer, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Position = UDim2.new(0, 0, 1, -15) }):Play()
@@ -2718,6 +2884,10 @@ end
 summonUIWithAnimation = function()
     if isUIVisible or isAnimating then return end
     isAnimating = true
+
+    if closeSideSettingsWindow then
+        closeSideSettingsWindow(true)
+    end
 
     local char = player.Character or player.CharacterAdded:Wait()
     local root = char:WaitForChild("HumanoidRootPart", 10)
@@ -3006,6 +3176,9 @@ do
         -- 3. Smoothly shrink & hide the Main 3D UI while camera starts zooming out
         wasMainUIVisibleBeforeWardrobe = isUIVisible
         if isUIVisible then
+            if closeSideSettingsWindow then
+                closeSideSettingsWindow(true)
+            end
             isUIVisible = false
             backSurfaceGui.Enabled = false
             if updateToggleBtnState then updateToggleBtnState(false) end
