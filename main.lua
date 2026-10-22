@@ -125,6 +125,25 @@ local setCamlockButtonVisible, updateCamlockButtonVisual, triggerCamlockAction, 
 local setBhopScreenWidgets, triggerAutoJumpAction
 local refreshFlyButtonsVisibility
 local toggleEditWidgetPosition, stopEditingWidgetPosition, activeFuncListHud
+local funcListContainer, refreshAllFuncPills
+
+local showSpeedHud = true
+local showAutoJumpBtn = true
+local showCamlockBtn = true
+local showFlyButtons = true
+local showActiveFuncList = true
+
+local speedHudCustomPos = UDim2.new(0, 25, 1, -85)
+local autoJumpCustomPos = UDim2.new(1, -75, 0.65, 0)
+local camlockCustomPos = UDim2.new(1, -75, 0.52, 0)
+local flyButtonsCustomPos = UDim2.new(1, -75, 0.5, -60)
+local funcListCustomPos = UDim2.new(1, -184, 0, 56)
+
+local activeEditingWidget = nil
+local activeMoveBtnCallback = nil
+local isDraggingScreenWidget = false
+local widgetDragStartInputPos = nil
+local widgetDragStartAbsPos = nil
 
 local uiPart, surfaceGui, backSurfaceGui, container, sidebar, mainFrame
 local backMainWindow, backSideWindow, sideSettingsWindow
@@ -157,33 +176,18 @@ local updateToggleBtnState, cleanupOrbitController, setupOrbitController
 -- ====================================================================
 -- ScreenGui for On-Screen HUD Widgets & Interactive Position Editor
 -- ====================================================================
+screenHudGui = Instance.new("ScreenGui")
+screenHudGui.Name = "SpatialUI_ScreenHUD"
+screenHudGui.ResetOnSpawn = false
+screenHudGui.DisplayOrder = 997
+screenHudGui.Parent = targetGuiParent
+
+-- ====================================================================
+-- HUD Sub-Block 1: Active Functions List & Speedometer
+-- ====================================================================
 do
-    local showSpeedHud = true
-    local showAutoJumpBtn = true
-    local showCamlockBtn = true
-    local showFlyButtons = true
-    local showActiveFuncList = true
-
-    local speedHudCustomPos = UDim2.new(0, 25, 1, -85)
-    local autoJumpCustomPos = UDim2.new(1, -75, 0.65, 0)
-    local camlockCustomPos = UDim2.new(1, -75, 0.52, 0)
-    local flyButtonsCustomPos = UDim2.new(1, -75, 0.5, -60)
-    local funcListCustomPos = UDim2.new(1, -184, 0, 56)
-
-    local activeEditingWidget = nil
-    local activeMoveBtnCallback = nil
-    local isDraggingScreenWidget = false
-    local widgetDragStartInputPos = nil
-    local widgetDragStartAbsPos = nil
-
-    screenHudGui = Instance.new("ScreenGui")
-    screenHudGui.Name = "SpatialUI_ScreenHUD"
-    screenHudGui.ResetOnSpawn = false
-    screenHudGui.DisplayOrder = 997
-    screenHudGui.Parent = targetGuiParent
-
     -- [ 0. Right-Side Active Functions List (ArrayList HUD) ]
-    local funcListContainer = Instance.new("Frame")
+    funcListContainer = Instance.new("Frame")
     funcListContainer.Name = "ActiveFunctionsHUD"
     funcListContainer.Size = UDim2.new(0, 170, 0, 28)
     funcListContainer.AutomaticSize = Enum.AutomaticSize.Y
@@ -316,7 +320,7 @@ do
         return true
     end
 
-    local function refreshAllFuncPills()
+    refreshAllFuncPills = function()
         funcListContainer.Position = funcListCustomPos
         local anyVisible = false
         for _, item in ipairs(registeredFuncItems) do
@@ -501,7 +505,12 @@ do
     gaugeFill.BorderSizePixel = 0
     gaugeFill.Parent = gaugeBackground
     Instance.new("UICorner", gaugeFill).CornerRadius = UDim.new(1, 0)
+end -- [End HUD Sub-Block 1]
 
+-- ====================================================================
+-- HUD Sub-Block 2: Auto Jump & Camlock Controls
+-- ====================================================================
+do
     -- [ 2. Auto Jump Button (Right Side) ]
     autoJumpBtn = Instance.new("TextButton")
     autoJumpBtn.Name = "AutoJumpToggleBtn"
@@ -937,7 +946,12 @@ do
         mobileFlyFrame.Position = flyButtonsCustomPos
         mobileFlyFrame.Visible = shouldShow
     end
+end -- [End HUD Sub-Block 2]
 
+-- ====================================================================
+-- HUD Sub-Block 3: Interactive Position Editor Overlay
+-- ====================================================================
+do
     -- [ 4. Interactive Screen Button Position Mover Overlay ]
     local editHighlightOverlay = Instance.new("Frame")
     editHighlightOverlay.Name = "WidgetMoveOverlay"
@@ -1087,7 +1101,7 @@ do
             isDraggingScreenWidget = false
         end
     end)
-end -- [End HUD Block]
+end -- [End HUD Sub-Block 3]
 
 -- ====================================================================
 -- 3D Part & SurfaceGui Setup
