@@ -52,6 +52,7 @@ local camlockTargetMode = "All" -- "All", "Players", "NPCs"
 local camlockFovMode = "180" -- "180", "360"
 local CAMLOCK_SMOOTHNESS = 0.25 -- Camlock aim smoothness (0.15 - 0.4)
 local CAMLOCK_MAX_DIST = 250
+local isCharacterAliveAndValid, getBestTargetPart
 
 local MAX_DISTANCE = 50
 local SPAWN_DISTANCE = 3.0
@@ -668,6 +669,72 @@ do
         refreshAllFuncPills()
     end
 
+    getBestTargetPart = function(char)
+        if not char or not char.Parent then return nil end
+        -- Prioritize Head for headshot/aimlock
+        local head = char:FindFirstChild("Head")
+        if head and head:IsA("BasePart") and head.Transparency < 0.95 then
+            return head
+        end
+        -- Fallback to HumanoidRootPart or Torso
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if root and root:IsA("BasePart") and root.Transparency < 0.95 then
+            return root
+        end
+        local torso = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+        if torso and torso:IsA("BasePart") and torso.Transparency < 0.95 then
+            return torso
+        end
+        return nil
+    end
+
+    isCharacterAliveAndValid = function(char, targetPart)
+        if not char or not char.Parent or char.Parent == game then return false end
+        if not char:IsDescendantOf(Workspace) then return false end
+        if char == player.Character then return false end
+        if not targetPart or not targetPart.Parent or not targetPart:IsDescendantOf(Workspace) then return false end
+
+        -- Reject camera descendants, viewmodels, cutscene rigs, fake arm models
+        if char:IsDescendantOf(camera) or targetPart:IsDescendantOf(camera) then return false end
+
+        local nameLower = char.Name:lower()
+        if nameLower:find("viewmodel") or nameLower:find("arms") or nameLower:find("camera") or nameLower:find("ignore") then
+            return false
+        end
+
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum then return false end
+
+        -- Check health & state
+        if hum.Health <= 0 then return false end
+        local state = hum:GetState()
+        if state == Enum.HumanoidStateType.Dead then return false end
+
+        -- Check game death/knocked markers
+        if char:GetAttribute("Dead") == true or char:GetAttribute("Downed") == true or char:GetAttribute("IsDead") == true or char:GetAttribute("Killed") == true then
+            return false
+        end
+        local deadVal = char:FindFirstChild("Dead") or char:FindFirstChild("Downed") or char:FindFirstChild("IsDead") or char:FindFirstChild("Ragdoll")
+        if deadVal and (deadVal:IsA("BoolValue") and deadVal.Value == true) then
+            return false
+        end
+
+        -- If player, ensure this character is their CURRENT active character (not an old dead corpse)
+        local targetPlayer = Players:GetPlayerFromCharacter(char)
+        if targetPlayer then
+            if targetPlayer.Character ~= char then
+                return false
+            end
+        end
+
+        -- Ensure target part is visible
+        if targetPart.Transparency >= 0.95 then
+            return false
+        end
+
+        return true
+    end
+
     local function getNearestTargetToCamera()
         local myRoot = getRootPart()
         if not myRoot then return nil end
@@ -680,8 +747,7 @@ do
 
         local function checkTargetCandidate(char, hum, part)
             if not char or not hum or not part then return end
-            if char == player.Character then return end
-            if hum.Health <= 0 then return end
+            if not isCharacterAliveAndValid(char, part) then return end
 
             local toTarget = part.Position - camPos
             local worldDistance = toTarget.Magnitude
@@ -707,11 +773,13 @@ do
         -- 1. Scan Players if mode is "All" or "Players"
         if camlockTargetMode == "All" or camlockTargetMode == "Players" then
             for _, otherPlayer in ipairs(Players:GetPlayers()) do
-                if otherPlayer ~= player and otherPlayer.Character then
+                if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:IsDescendantOf(Workspace) then
                     local targetChar = otherPlayer.Character
                     local targetHum = targetChar:FindFirstChildOfClass("Humanoid")
-                    local targetHead = targetChar:FindFirstChild("Head") or targetChar:FindFirstChild("HumanoidRootPart")
-                    checkTargetCandidate(targetChar, targetHum, targetHead)
+                    local targetPart = getBestTargetPart(targetChar)
+                    if targetHum and targetPart then
+                        checkTargetCandidate(targetChar, targetHum, targetPart)
+                    end
                 end
             end
         end
@@ -721,17 +789,19 @@ do
             local function scanForNPCs(parentObj, depth)
                 if depth > 3 then return end
                 for _, obj in ipairs(parentObj:GetChildren()) do
-                    if obj:IsA("Model") and obj ~= player.Character then
+                    if obj:IsA("Model") and obj ~= player.Character and not obj:IsDescendantOf(camera) then
                         local hum = obj:FindFirstChildOfClass("Humanoid")
-                        if hum and hum.Health > 0 and not Players:GetPlayerFromCharacter(obj) then
-                            local part = obj:FindFirstChild("Head") or obj:FindFirstChild("HumanoidRootPart") or obj.PrimaryPart
-                            checkTargetCandidate(obj, hum, part)
+                        if hum and not Players:GetPlayerFromCharacter(obj) then
+                            local part = getBestTargetPart(obj)
+                            if part then
+                                checkTargetCandidate(obj, hum, part)
+                            end
                         else
                             if depth < 3 and not obj:FindFirstChildOfClass("Humanoid") then
                                 scanForNPCs(obj, depth + 1)
                             end
                         end
-                    elseif obj:IsA("Folder") then
+                    elseif obj:IsA("Folder") and obj ~= camera then
                         scanForNPCs(obj, depth + 1)
                     end
                 end
@@ -4523,16 +4593,22 @@ RunService:BindToRenderStep(CAMLOCK_BIND_NAME, Enum.RenderPriority.Camera.Value 
         local myRoot = getRootPart()
 
         local targetValid = false
-        if targetHum and targetHum.Health > 0 and myRoot and (lockedTargetPart.Position - myRoot.Position).Magnitude <= (CAMLOCK_MAX_DIST * 1.25) then
-            targetValid = true
-            local currentCamPos = camera.CFrame.Position
-            local targetPos = lockedTargetPart.Position
-            
-            -- Target aim direction toward locked part
-            local targetLookCFrame = CFrame.lookAt(currentCamPos, targetPos)
-            
-            -- Smoothly lerp camera rotation after CameraModule finishes
-            camera.CFrame = camera.CFrame:Lerp(targetLookCFrame, CAMLOCK_SMOOTHNESS)
+        if lockedTargetPart and myRoot then
+            local targetChar = lockedTargetPart.Parent
+            if isCharacterAliveAndValid and isCharacterAliveAndValid(targetChar, lockedTargetPart) then
+                local dist = (lockedTargetPart.Position - myRoot.Position).Magnitude
+                if dist <= (CAMLOCK_MAX_DIST * 1.25) then
+                    targetValid = true
+                    local currentCamPos = camera.CFrame.Position
+                    local targetPos = lockedTargetPart.Position
+                    
+                    -- Target aim direction toward locked part
+                    local targetLookCFrame = CFrame.lookAt(currentCamPos, targetPos)
+                    
+                    -- Smoothly lerp camera rotation after CameraModule finishes
+                    camera.CFrame = camera.CFrame:Lerp(targetLookCFrame, CAMLOCK_SMOOTHNESS)
+                end
+            end
         end
 
         if not targetValid then
