@@ -754,105 +754,120 @@ do
         -- Reject corpse, ragdoll, debris, deadbody, and fallen models
         if nameLower:find("corpse") or nameLower:find("ragdoll") or nameLower:find("deadbody") or nameLower:find("dead_body")
             or nameLower:find("debris") or nameLower:find("wreck") or nameLower:find("remains")
-            or nameLower:find("downed") or nameLower:find("knocked") then
+            or nameLower:find("downed") or nameLower:find("knocked") or nameLower:find("fallen") then
             return false
         end
 
         local parentNameLower = char.Parent and char.Parent.Name:lower() or ""
         if parentNameLower:find("corpse") or parentNameLower:find("ragdoll") or parentNameLower:find("debris")
             or parentNameLower:find("dead") or parentNameLower:find("grave") or parentNameLower:find("gore")
-            or parentNameLower:find("dropped") then
+            or parentNameLower:find("blood") or parentNameLower:find("dropped") then
             return false
         end
 
         local hum = char:FindFirstChildOfClass("Humanoid")
         if not hum then return false end
 
-        -- Check health & state
+        -- 1. Health & Humanoid State check
         if hum.Health <= 0 or hum.MaxHealth <= 0 then return false end
         local state = hum:GetState()
-        if state == Enum.HumanoidStateType.Dead or state == Enum.HumanoidStateType.Physics then return false end
+        if state == Enum.HumanoidStateType.Dead 
+            or state == Enum.HumanoidStateType.Physics 
+            or state == Enum.HumanoidStateType.Ragdoll 
+            or state == Enum.HumanoidStateType.FallingDown
+            or state == Enum.HumanoidStateType.None then
+            return false
+        end
 
-        -- Check death/downed/corpse attributes
+        -- 2. PlatformStand or Sit without a Seat (Universal Ragdoll flag)
+        if hum.PlatformStand then
+            return false
+        end
+        if hum.Sit and not hum.SeatPart then
+            return false
+        end
+
+        -- 3. Check death/downed/corpse attributes
         if char:GetAttribute("Dead") == true or char:GetAttribute("Downed") == true or char:GetAttribute("IsDead") == true 
             or char:GetAttribute("Killed") == true or char:GetAttribute("Ragdoll") == true or char:GetAttribute("Ragdolled") == true
             or char:GetAttribute("Corpse") == true or char:GetAttribute("KO") == true or char:GetAttribute("KnockedOut") == true
-            or char:GetAttribute("Unconscious") == true or char:GetAttribute("Carried") == true then
+            or char:GetAttribute("Unconscious") == true or char:GetAttribute("Carried") == true or char:GetAttribute("Dying") == true then
             return false
         end
 
-        -- Check marker value objects
-        local deadMarker = char:FindFirstChild("Dead") or char:FindFirstChild("Downed") or char:FindFirstChild("IsDead")
-            or char:FindFirstChild("Ragdoll") or char:FindFirstChild("Ragdolled") or char:FindFirstChild("Corpse")
-            or char:FindFirstChild("KO") or char:FindFirstChild("Knocked") or char:FindFirstChild("Unconscious")
-        if deadMarker then
-            if deadMarker:IsA("BoolValue") and deadMarker.Value == true then
-                return false
-            elseif deadMarker:IsA("StringValue") and deadMarker.Value ~= "" and deadMarker.Value ~= "None" then
-                return false
+        -- 4. Deep inspection of descendants for ragdoll constraints, disabled joints, or death values
+        local motorCount = 0
+        local hasDisabledMotor = false
+        local hasRagdollConstraint = false
+
+        for _, d in ipairs(char:GetDescendants()) do
+            local cName = d.ClassName
+            if cName == "Motor6D" then
+                motorCount = motorCount + 1
+                if not d.Enabled or not d.Part0 or not d.Part1 then
+                    hasDisabledMotor = true
+                end
+            elseif cName == "BallSocketConstraint" or cName == "HingeConstraint" or cName == "NoCollideConstraint" then
+                local dName = d.Name:lower()
+                if dName:find("ragdoll") or dName:find("socket") or dName:find("corpse") or dName:find("joint") or cName == "BallSocketConstraint" then
+                    hasRagdollConstraint = true
+                end
+            elseif cName == "BoolValue" or cName == "StringValue" or cName == "NumberValue" then
+                local vName = d.Name:lower()
+                if vName:find("ragdoll") or vName:find("corpse") or vName:find("dead") or vName:find("down") or vName:find("ko") or vName:find("unconscious") or vName:find("bleed") then
+                    if cName == "BoolValue" and d.Value == true then return false end
+                    if cName == "StringValue" and d.Value ~= "" and d.Value ~= "None" then return false end
+                    if cName == "NumberValue" and d.Value > 0 and (vName:find("time") or vName:find("death") or vName:find("bleed")) then return false end
+                end
+            elseif cName == "ProximityPrompt" then
+                local pAct = (d.ActionText or ""):lower()
+                local pObj = (d.ObjectText or ""):lower()
+                if pAct:find("loot") or pAct:find("search") or pAct:find("revive") or pAct:find("carry") or pAct:find("execute") or pAct:find("bury")
+                    or pObj:find("corpse") or pObj:find("body") or pObj:find("remains") then
+                    return false
+                end
             end
         end
 
-        -- Check CollectionService tags if supported
-        if char.HasTag then
-            if char:HasTag("Corpse") or char:HasTag("Ragdoll") or char:HasTag("Dead") or char:HasTag("Downed") or char:HasTag("KO") then
-                return false
-            end
-        end
-
-        -- Detect ragdoll physics constraints (BallSocketConstraints replacing Motor6Ds on death)
-        if char:FindFirstChildOfClass("BallSocketConstraint") or char:FindFirstChild("RagdollConstraint", true) then
+        -- If Motor6Ds are disabled or replaced by ragdoll constraints, character is dead/ragdolled
+        if hasDisabledMotor or hasRagdollConstraint then
             return false
         end
 
-        -- Detect loot/carry/revive corpse ProximityPrompts
-        local prompt = char:FindFirstChildOfClass("ProximityPrompt", true)
-        if prompt then
-            local pAct = (prompt.ActionText or ""):lower()
-            local pObj = (prompt.ObjectText or ""):lower()
-            if pAct:find("loot") or pAct:find("search") or pAct:find("revive") or pAct:find("carry") or pAct:find("execute")
-                or pObj:find("corpse") or pObj:find("body") or pObj:find("remains") then
-                return false
+        -- Living humanoid rigs require core Motor6Ds
+        if motorCount < 3 then
+            return false
+        end
+
+        -- 5. Orientation & Posture check (applies to both Players and NPCs!)
+        local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+        if root and root:IsA("BasePart") then
+            local upY = root.CFrame.UpVector.Y
+            if upY < 0.65 then
+                -- Fallen over / tilted / on floor
+                if hum.WalkSpeed <= 0 or hum.MoveDirection.Magnitude < 0.05 or root.AssemblyLinearVelocity.Magnitude < 5 then
+                    return false
+                end
+                if upY < 0.45 then
+                    return false
+                end
             end
         end
 
-        -- If player, ensure this character is their CURRENT active character (not an old dead corpse)
+        -- 6. If player, ensure this character is their CURRENT active character (not an old dead corpse)
         local targetPlayer = Players:GetPlayerFromCharacter(char)
         if targetPlayer then
             if targetPlayer.Character ~= char then
                 return false
             end
         else
-            -- If NPC, verify it's not a generic dead body NPC or lying flat on ground
+            -- If NPC, verify it's not a generic dead body NPC
             if nameLower:find("body") or nameLower:find("dead") then
                 return false
             end
-            local root = char:FindFirstChild("HumanoidRootPart")
-            if root and root:IsA("BasePart") then
-                if math.abs(root.CFrame.UpVector.Y) < 0.35 then
-                    if hum.PlatformStand or hum.WalkSpeed <= 0 or hum.MoveDirection.Magnitude < 0.01 then
-                        return false
-                    end
-                end
-            end
         end
 
-        -- Check Head / Neck joint integrity (standard Roblox death breaks neck)
-        local head = char:FindFirstChild("Head")
-        if head and head:IsA("BasePart") then
-            local hasNeck = head:FindFirstChildOfClass("Motor6D") or head:FindFirstChildOfClass("Weld") or head:FindFirstChild("Neck")
-            if not hasNeck then
-                local torso = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
-                if torso then
-                    hasNeck = torso:FindFirstChild("Neck") or torso:FindFirstChildOfClass("Motor6D")
-                end
-            end
-            if not hasNeck then
-                return false
-            end
-        end
-
-        -- Ensure target part is visible
+        -- 7. Ensure target part is visible
         if targetPart.Transparency >= 0.95 then
             return false
         end
