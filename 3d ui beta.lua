@@ -1,4 +1,4 @@
--- LocalScript for Executor / Client Environment
+﻿-- LocalScript for Executor / Client Environment
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -43,6 +43,7 @@ local isStrafing = false
 local camlockEnabled = false
 local isTargetLocked = false
 local lockedTargetPart = nil
+local camlockTargetMode = "All" -- "All", "Players", "NPCs"
 local CAMLOCK_SMOOTHNESS = 0.25 -- Camlock aim smoothness (0.15 - 0.4)
 local CAMLOCK_MAX_DIST = 250
 
@@ -126,7 +127,7 @@ local typewriteTitle
 
 local playerPage, visualsPage, settingsPage
 local createToggleRow, createSliderRow, createActionButton
-local createSubSlider, createSubToggle, createMovePositionRow, createKeybindRow
+local createSubSlider, createSubToggle, createMovePositionRow, createKeybindRow, createSubSelector
 
 local mobileGui, mobileFlyFrame
 local flyAttachment, flyVelocity, flyAlign, startFly, stopFly
@@ -633,9 +634,20 @@ do
     camlockStatusText.TextSize = 11
     camlockStatusText.Parent = camlockBtn
 
-    updateCamlockButtonVisual = function(isLocked, targetPlayer)
+    updateCamlockButtonVisual = function(isLocked, targetInfo)
         if isLocked then
-            camlockStatusText.Text = targetPlayer and (targetPlayer.DisplayName:sub(1, 6) .. "..") or "LOCKED"
+            local nameStr = "LOCKED"
+            if typeof(targetInfo) == "Instance" and targetInfo:IsA("Player") then
+                nameStr = targetInfo.DisplayName
+            elseif type(targetInfo) == "string" then
+                nameStr = targetInfo
+            elseif typeof(targetInfo) == "Instance" and targetInfo:IsA("Model") then
+                nameStr = targetInfo.Name
+            end
+            if #nameStr > 6 then
+                nameStr = nameStr:sub(1, 6) .. ".."
+            end
+            camlockStatusText.Text = nameStr
             camlockStatusText.TextColor3 = Color3.fromRGB(255, 60, 60)
             camlockIcon.ImageColor3 = Color3.fromRGB(255, 60, 60)
             camlockStroke.Color = Color3.fromRGB(255, 60, 60)
@@ -650,7 +662,7 @@ do
         refreshAllFuncPills()
     end
 
-    local function getNearestPlayerToCamera()
+    local function getNearestTargetToCamera()
         local myRoot = getRootPart()
         if not myRoot then return nil end
 
@@ -658,40 +670,72 @@ do
         local shortestDist = math.huge
         local screenCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
 
-        for _, otherPlayer in ipairs(Players:GetPlayers()) do
-            if otherPlayer ~= player and otherPlayer.Character then
-                local targetChar = otherPlayer.Character
-                local targetHum = targetChar:FindFirstChildOfClass("Humanoid")
-                local targetHead = targetChar:FindFirstChild("Head")
+        local function checkTargetCandidate(char, hum, part)
+            if not char or not hum or not part then return end
+            if char == player.Character then return end
+            if hum.Health <= 0 then return end
 
-                if targetHum and targetHum.Health > 0 and targetHead then
-                    local worldDistance = (targetHead.Position - myRoot.Position).Magnitude
-                    if worldDistance <= CAMLOCK_MAX_DIST then
-                        local screenPos, onScreen = camera:WorldToViewportPoint(targetHead.Position)
-                        if onScreen then
-                            local crosshairDistance = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
-                            local score = crosshairDistance + (worldDistance * 0.8)
-                            if score < shortestDist then
-                                shortestDist = score
-                                nearestTargetPart = targetHead
-                            end
-                        end
+            local worldDistance = (part.Position - myRoot.Position).Magnitude
+            if worldDistance <= CAMLOCK_MAX_DIST then
+                local screenPos, onScreen = camera:WorldToViewportPoint(part.Position)
+                if onScreen then
+                    local crosshairDistance = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
+                    local score = crosshairDistance + (worldDistance * 0.8)
+                    if score < shortestDist then
+                        shortestDist = score
+                        nearestTargetPart = part
                     end
                 end
             end
         end
+
+        -- 1. Scan Players if mode is "All" or "Players"
+        if camlockTargetMode == "All" or camlockTargetMode == "Players" then
+            for _, otherPlayer in ipairs(Players:GetPlayers()) do
+                if otherPlayer ~= player and otherPlayer.Character then
+                    local targetChar = otherPlayer.Character
+                    local targetHum = targetChar:FindFirstChildOfClass("Humanoid")
+                    local targetHead = targetChar:FindFirstChild("Head") or targetChar:FindFirstChild("HumanoidRootPart")
+                    checkTargetCandidate(targetChar, targetHum, targetHead)
+                end
+            end
+        end
+
+        -- 2. Scan Alive NPCs if mode is "All" or "NPCs"
+        if camlockTargetMode == "All" or camlockTargetMode == "NPCs" then
+            local function scanForNPCs(parentObj, depth)
+                if depth > 3 then return end
+                for _, obj in ipairs(parentObj:GetChildren()) do
+                    if obj:IsA("Model") and obj ~= player.Character then
+                        local hum = obj:FindFirstChildOfClass("Humanoid")
+                        if hum and hum.Health > 0 and not Players:GetPlayerFromCharacter(obj) then
+                            local part = obj:FindFirstChild("Head") or obj:FindFirstChild("HumanoidRootPart") or obj.PrimaryPart
+                            checkTargetCandidate(obj, hum, part)
+                        else
+                            if depth < 3 and not obj:FindFirstChildOfClass("Humanoid") then
+                                scanForNPCs(obj, depth + 1)
+                            end
+                        end
+                    elseif obj:IsA("Folder") then
+                        scanForNPCs(obj, depth + 1)
+                    end
+                end
+            end
+            scanForNPCs(Workspace, 1)
+        end
+
         return nearestTargetPart
     end
 
     triggerCamlockAction = function()
         if not camlockEnabled then return end
         if not isTargetLocked then
-            local target = getNearestPlayerToCamera()
+            local target = getNearestTargetToCamera()
             if target then
                 lockedTargetPart = target
                 isTargetLocked = true
                 local targetPlayer = Players:GetPlayerFromCharacter(target.Parent)
-                updateCamlockButtonVisual(true, targetPlayer)
+                updateCamlockButtonVisual(true, targetPlayer or target.Parent.Name)
             else
                 camlockStroke.Color = Color3.fromRGB(255, 160, 40)
                 task.delay(0.25, function()
@@ -1785,6 +1829,66 @@ do
         return row
     end
 
+    createSubSelector = function(parent, name, options, defaultIndex, onSelect, order)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, 0, 0, 38)
+        row.BackgroundColor3 = Color3.fromRGB(25, 27, 37)
+        row.LayoutOrder = order or 1
+        row.Parent = parent
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+
+        attachSubItemDecor(row, Color3.fromRGB(255, 175, 75))
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, -120, 1, 0)
+        label.Position = UDim2.new(0, 20, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = name
+        label.TextColor3 = Color3.fromRGB(205, 215, 235)
+        label.Font = Enum.Font.GothamBold
+        label.TextSize = 11
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.TextTruncate = Enum.TextTruncate.AtEnd
+        label.Parent = row
+
+        local cycleBtn = Instance.new("TextButton")
+        cycleBtn.Size = UDim2.new(0, 102, 0, 22)
+        cycleBtn.Position = UDim2.new(1, -110, 0.5, -11)
+        cycleBtn.BackgroundColor3 = Color3.fromRGB(36, 42, 60)
+        cycleBtn.Font = Enum.Font.GothamBold
+        cycleBtn.TextSize = 10
+        cycleBtn.TextColor3 = Color3.fromRGB(255, 200, 100)
+        cycleBtn.AutoButtonColor = false
+        cycleBtn.Parent = row
+        Instance.new("UICorner", cycleBtn).CornerRadius = UDim.new(0, 6)
+
+        local stroke = Instance.new("UIStroke", cycleBtn)
+        stroke.Color = Color3.fromRGB(75, 85, 115)
+        stroke.Thickness = 1
+
+        local currentIndex = defaultIndex or 1
+        local function updateText()
+            local opt = options[currentIndex]
+            cycleBtn.Text = type(opt) == "table" and opt.Name or tostring(opt)
+        end
+        updateText()
+
+        cycleBtn.Activated:Connect(function()
+            if interactionState ~= "IDLE" then return end
+            currentIndex = (currentIndex % #options) + 1
+            updateText()
+            TweenService:Create(cycleBtn, TweenInfo.new(0.12), {BackgroundColor3 = Color3.fromRGB(55, 68, 98)}):Play()
+            task.delay(0.12, function()
+                TweenService:Create(cycleBtn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(36, 42, 60)}):Play()
+            end)
+            local opt = options[currentIndex]
+            local val = type(opt) == "table" and opt.Value or opt
+            onSelect(val, currentIndex)
+        end)
+
+        return row
+    end
+
     createToggleRow = function(parent, name, defaultState, onToggle, order, setupSubSettings)
         local row = Instance.new("Frame")
         row.Size = UDim2.new(1, -32, 0, 48)
@@ -2364,6 +2468,21 @@ end, 3, function(sub, rowCtrl)
     createKeybindRow(sub, "Toggle Bhop Keybind", nil, function()
         rowCtrl.toggle()
     end, 6)
+    createSubSlider(sub, "Max Bhop Speed", 50, 350, math.round(MAX_BHOP_SPEED), function(v)
+        MAX_BHOP_SPEED = v
+    end, 7)
+    createSubSlider(sub, "Air Acceleration Rate (%)", 10, 200, math.round(STRAFE_BOOST_AIR * 100), function(v)
+        STRAFE_BOOST_AIR = v / 100
+    end, 8)
+    createSubSlider(sub, "Jump Boost Power", 1, 25, math.round(JUMP_INITIAL_BOOST), function(v)
+        JUMP_INITIAL_BOOST = v
+    end, 9)
+    createSubSlider(sub, "Max Straight Speed", 20, 150, math.round(MAX_STRAIGHT_SPEED), function(v)
+        MAX_STRAIGHT_SPEED = v
+    end, 10)
+    createSubSlider(sub, "Straight Bleed Rate", 1, 30, math.round(STRAIGHT_BLEED_RATE), function(v)
+        STRAIGHT_BLEED_RATE = v
+    end, 11)
 end)
 
 createToggleRow(playerPage, "Fly Mode (Mobile/PC)", false, function(v)
@@ -2399,7 +2518,7 @@ end, 6, function(sub, rowCtrl)
 end)
 
 -- [ TAB 2: VISUALS & COMBAT ]
-createToggleRow(visualsPage, "Camlock (Nearest Player)", false, function(v)
+createToggleRow(visualsPage, "Camlock (Aim Lock)", false, function(v)
     camlockEnabled = v
     if not v then
         isTargetLocked = false
@@ -2418,9 +2537,27 @@ end, 1, function(sub, rowCtrl)
     createKeybindRow(sub, "Toggle Camlock Keybind", nil, function()
         rowCtrl.toggle()
     end, 4)
+    createSubSelector(sub, "Target Mode", {
+        { Name = "All Targets", Value = "All" },
+        { Name = "Players Only", Value = "Players" },
+        { Name = "Alive NPCs", Value = "NPCs" },
+    }, 1, function(val)
+        camlockTargetMode = val
+        if isTargetLocked and lockedTargetPart then
+            local isPlayer = Players:GetPlayerFromCharacter(lockedTargetPart.Parent) ~= nil
+            if (val == "Players" and not isPlayer) or (val == "NPCs" and isPlayer) then
+                isTargetLocked = false
+                lockedTargetPart = nil
+                updateCamlockButtonVisual(false)
+            end
+        end
+    end, 5)
     createSubSlider(sub, "Aim Smoothness (%)", 5, 100, 25, function(v)
         CAMLOCK_SMOOTHNESS = math.clamp(v / 100, 0.05, 1)
-    end, 5)
+    end, 6)
+    createSubSlider(sub, "Max Lock Distance", 50, 600, 250, function(v)
+        CAMLOCK_MAX_DIST = v
+    end, 7)
 end)
 
 createToggleRow(visualsPage, "Player ESP (Chams)", false, function(v)
