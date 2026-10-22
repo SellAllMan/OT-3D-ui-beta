@@ -1,4 +1,4 @@
-﻿-- LocalScript for Executor / Client Environment
+-- LocalScript for Executor / Client Environment
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -52,7 +52,7 @@ local camlockTargetMode = "All" -- "All", "Players", "NPCs"
 local camlockFovMode = "180" -- "180", "360"
 local CAMLOCK_SMOOTHNESS = 0.25 -- Camlock aim smoothness (0.15 - 0.4)
 local CAMLOCK_MAX_DIST = 250
-local isCharacterAliveAndValid, getBestTargetPart
+local isCharacterAliveAndValid, getBestTargetPart, getNearestTargetToCamera
 
 local MAX_DISTANCE = 50
 local SPAWN_DISTANCE = 3.0
@@ -735,7 +735,7 @@ do
         return true
     end
 
-    local function getNearestTargetToCamera()
+    getNearestTargetToCamera = function()
         local myRoot = getRootPart()
         if not myRoot then return nil end
 
