@@ -125,25 +125,27 @@ local setCamlockButtonVisible, updateCamlockButtonVisual, triggerCamlockAction, 
 local setBhopScreenWidgets, triggerAutoJumpAction
 local refreshFlyButtonsVisibility
 local toggleEditWidgetPosition, stopEditingWidgetPosition, activeFuncListHud
-local funcListContainer, refreshAllFuncPills
+local funcListContainer, refreshAllFuncPills, getMainTotalPixels
 
-local showSpeedHud = true
-local showAutoJumpBtn = true
-local showCamlockBtn = true
-local showFlyButtons = true
-local showActiveFuncList = true
+local hudConfig = {
+    showSpeedHud = true,
+    showAutoJumpBtn = true,
+    showCamlockBtn = true,
+    showFlyButtons = true,
+    showActiveFuncList = true,
 
-local speedHudCustomPos = UDim2.new(0, 25, 1, -85)
-local autoJumpCustomPos = UDim2.new(1, -75, 0.65, 0)
-local camlockCustomPos = UDim2.new(1, -75, 0.52, 0)
-local flyButtonsCustomPos = UDim2.new(1, -75, 0.5, -60)
-local funcListCustomPos = UDim2.new(1, -184, 0, 56)
+    speedHudCustomPos = UDim2.new(0, 25, 1, -85),
+    autoJumpCustomPos = UDim2.new(1, -75, 0.65, 0),
+    camlockCustomPos = UDim2.new(1, -75, 0.52, 0),
+    flyButtonsCustomPos = UDim2.new(1, -75, 0.5, -60),
+    funcListCustomPos = UDim2.new(1, -184, 0, 56),
 
-local activeEditingWidget = nil
-local activeMoveBtnCallback = nil
-local isDraggingScreenWidget = false
-local widgetDragStartInputPos = nil
-local widgetDragStartAbsPos = nil
+    activeEditingWidget = nil,
+    activeMoveBtnCallback = nil,
+    isDraggingScreenWidget = false,
+    widgetDragStartInputPos = nil,
+    widgetDragStartAbsPos = nil,
+}
 
 local uiPart, surfaceGui, backSurfaceGui, container, sidebar, mainFrame
 local backMainWindow, backSideWindow, sideSettingsWindow
@@ -191,7 +193,7 @@ do
     funcListContainer.Name = "ActiveFunctionsHUD"
     funcListContainer.Size = UDim2.new(0, 170, 0, 28)
     funcListContainer.AutomaticSize = Enum.AutomaticSize.Y
-    funcListContainer.Position = funcListCustomPos
+    funcListContainer.Position = hudConfig.funcListCustomPos
     funcListContainer.BackgroundTransparency = 1
     funcListContainer.Parent = screenHudGui
 
@@ -253,7 +255,7 @@ do
     end
 
     local function updateSingleFuncPill(item)
-        if not showActiveFuncList or not item.isEnabled then
+        if not hudConfig.showActiveFuncList or not item.isEnabled then
             if item.pill.Visible then
                 item.pill.Visible = false
             end
@@ -321,15 +323,15 @@ do
     end
 
     refreshAllFuncPills = function()
-        funcListContainer.Position = funcListCustomPos
+        funcListContainer.Position = hudConfig.funcListCustomPos
         local anyVisible = false
         for _, item in ipairs(registeredFuncItems) do
             if updateSingleFuncPill(item) then
                 anyVisible = true
             end
         end
-        funcHeaderPill.Visible = (showActiveFuncList and anyVisible) or (activeEditingWidget == "funcList")
-        funcListContainer.Visible = showActiveFuncList or (activeEditingWidget == "funcList")
+        funcHeaderPill.Visible = (hudConfig.showActiveFuncList and anyVisible) or (hudConfig.activeEditingWidget == "funcList")
+        funcListContainer.Visible = hudConfig.showActiveFuncList or (hudConfig.activeEditingWidget == "funcList")
     end
 
     activeFuncListHud = {
@@ -427,7 +429,7 @@ do
             refreshAllFuncPills()
         end,
         setHudVisible = function(visible)
-            showActiveFuncList = visible
+            hudConfig.showActiveFuncList = visible
             refreshAllFuncPills()
         end,
         refresh = refreshAllFuncPills
@@ -576,21 +578,21 @@ do
     end
 
     autoJumpBtn.Activated:Connect(function()
-        if activeEditingWidget == "autoJump" then return end
+        if hudConfig.activeEditingWidget == "autoJump" then return end
         triggerAutoJumpAction()
     end)
 
     setBhopScreenWidgets = function(visible, overrideShowAuto, overrideShowHud)
-        if overrideShowAuto ~= nil then showAutoJumpBtn = overrideShowAuto end
-        if overrideShowHud ~= nil then showSpeedHud = overrideShowHud end
+        if overrideShowAuto ~= nil then hudConfig.showAutoJumpBtn = overrideShowAuto end
+        if overrideShowHud ~= nil then hudConfig.showSpeedHud = overrideShowHud end
 
-        local shouldShowHud = (visible and showSpeedHud) or (activeEditingWidget == "speedHud")
-        local shouldShowAuto = (visible and showAutoJumpBtn) or (activeEditingWidget == "autoJump")
+        local shouldShowHud = (visible and hudConfig.showSpeedHud) or (hudConfig.activeEditingWidget == "speedHud")
+        local shouldShowAuto = (visible and hudConfig.showAutoJumpBtn) or (hudConfig.activeEditingWidget == "autoJump")
 
         if shouldShowHud then
             hudContainer.Visible = true
             TweenService:Create(hudContainer, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                Position = speedHudCustomPos,
+                Position = hudConfig.speedHudCustomPos,
                 GroupTransparency = 0
             }):Play()
         else
@@ -599,7 +601,7 @@ do
             })
             tweenLeft:Play()
             tweenLeft.Completed:Connect(function()
-                if not ((bhopEnabled and showSpeedHud) or activeEditingWidget == "speedHud") then
+                if not ((bhopEnabled and hudConfig.showSpeedHud) or hudConfig.activeEditingWidget == "speedHud") then
                     hudContainer.Visible = false
                 end
             end)
@@ -608,7 +610,7 @@ do
         if shouldShowAuto then
             autoJumpBtn.Visible = true
             TweenService:Create(autoJumpBtn, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                Position = autoJumpCustomPos
+                Position = hudConfig.autoJumpCustomPos
             }):Play()
         else
             autoJumpBtn.Visible = false
@@ -913,19 +915,19 @@ do
     end
 
     camlockBtn.Activated:Connect(function()
-        if activeEditingWidget == "camlock" then return end
+        if hudConfig.activeEditingWidget == "camlock" then return end
         triggerCamlockAction()
     end)
 
     setCamlockButtonVisible = function(visible, overrideShowBtn)
         if overrideShowBtn ~= nil then
-            showCamlockBtn = overrideShowBtn
+            hudConfig.showCamlockBtn = overrideShowBtn
         end
-        local shouldShow = (visible and showCamlockBtn) or (activeEditingWidget == "camlock")
+        local shouldShow = (visible and hudConfig.showCamlockBtn) or (hudConfig.activeEditingWidget == "camlock")
         if shouldShow then
             camlockBtn.Visible = true
             TweenService:Create(camlockBtn, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                Position = camlockCustomPos
+                Position = hudConfig.camlockCustomPos
             }):Play()
         else
             camlockBtn.Visible = false
@@ -939,11 +941,11 @@ do
 
     refreshFlyButtonsVisibility = function(overrideShowFly)
         if overrideShowFly ~= nil then
-            showFlyButtons = overrideShowFly
+            hudConfig.showFlyButtons = overrideShowFly
         end
         if not mobileFlyFrame then return end
-        local shouldShow = (flyEnabled and showFlyButtons) or (activeEditingWidget == "flyBtns")
-        mobileFlyFrame.Position = flyButtonsCustomPos
+        local shouldShow = (flyEnabled and hudConfig.showFlyButtons) or (hudConfig.activeEditingWidget == "flyBtns")
+        mobileFlyFrame.Position = hudConfig.flyButtonsCustomPos
         mobileFlyFrame.Visible = shouldShow
     end
 end -- [End HUD Sub-Block 2]
@@ -1005,7 +1007,7 @@ do
     end
 
     local function syncOverlayToTarget()
-        local target = getWidgetInstance(activeEditingWidget)
+        local target = getWidgetInstance(hudConfig.activeEditingWidget)
         if not target then
             editHighlightOverlay.Visible = false
             return
@@ -1017,11 +1019,11 @@ do
     end
 
     stopEditingWidgetPosition = function()
-        if not activeEditingWidget then return end
-        local prevCallback = activeMoveBtnCallback
-        activeEditingWidget = nil
-        activeMoveBtnCallback = nil
-        isDraggingScreenWidget = false
+        if not hudConfig.activeEditingWidget then return end
+        local prevCallback = hudConfig.activeMoveBtnCallback
+        hudConfig.activeEditingWidget = nil
+        hudConfig.activeMoveBtnCallback = nil
+        hudConfig.isDraggingScreenWidget = false
         editHighlightOverlay.Visible = false
         if prevCallback then prevCallback(false) end
 
@@ -1032,16 +1034,16 @@ do
     end
 
     toggleEditWidgetPosition = function(widgetId, onStateChange)
-        if activeEditingWidget == widgetId then
+        if hudConfig.activeEditingWidget == widgetId then
             stopEditingWidgetPosition()
             return
         end
-        if activeEditingWidget then
+        if hudConfig.activeEditingWidget then
             stopEditingWidgetPosition()
         end
 
-        activeEditingWidget = widgetId
-        activeMoveBtnCallback = onStateChange
+        hudConfig.activeEditingWidget = widgetId
+        hudConfig.activeMoveBtnCallback = onStateChange
         if onStateChange then onStateChange(true) end
 
         setBhopScreenWidgets(bhopEnabled)
@@ -1057,39 +1059,39 @@ do
     end)
 
     editHighlightOverlay.InputBegan:Connect(function(input)
-        if not activeEditingWidget then return end
+        if not hudConfig.activeEditingWidget then return end
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            local target = getWidgetInstance(activeEditingWidget)
+            local target = getWidgetInstance(hudConfig.activeEditingWidget)
             if target then
-                isDraggingScreenWidget = true
-                widgetDragStartInputPos = input.Position
-                widgetDragStartAbsPos = target.AbsolutePosition
+                hudConfig.isDraggingScreenWidget = true
+                hudConfig.widgetDragStartInputPos = input.Position
+                hudConfig.widgetDragStartAbsPos = target.AbsolutePosition
             end
         end
     end)
 
     UserInputService.InputChanged:Connect(function(input)
-        if not isDraggingScreenWidget or not activeEditingWidget then return end
+        if not hudConfig.isDraggingScreenWidget or not hudConfig.activeEditingWidget then return end
         if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            local target = getWidgetInstance(activeEditingWidget)
-            if target and widgetDragStartInputPos and widgetDragStartAbsPos then
-                local delta = input.Position - widgetDragStartInputPos
+            local target = getWidgetInstance(hudConfig.activeEditingWidget)
+            if target and hudConfig.widgetDragStartInputPos and hudConfig.widgetDragStartAbsPos then
+                local delta = input.Position - hudConfig.widgetDragStartInputPos
                 local vp = camera.ViewportSize
-                local newX = math.clamp(widgetDragStartAbsPos.X + delta.X, 6, math.max(6, vp.X - target.AbsoluteSize.X - 6))
-                local newY = math.clamp(widgetDragStartAbsPos.Y + delta.Y, 6, math.max(6, vp.Y - target.AbsoluteSize.Y - 6))
+                local newX = math.clamp(hudConfig.widgetDragStartAbsPos.X + delta.X, 6, math.max(6, vp.X - target.AbsoluteSize.X - 6))
+                local newY = math.clamp(hudConfig.widgetDragStartAbsPos.Y + delta.Y, 6, math.max(6, vp.Y - target.AbsoluteSize.Y - 6))
                 local newUDim = UDim2.new(0, newX, 0, newY)
 
                 target.Position = newUDim
-                if activeEditingWidget == "autoJump" then
-                    autoJumpCustomPos = newUDim
-                elseif activeEditingWidget == "speedHud" then
-                    speedHudCustomPos = newUDim
-                elseif activeEditingWidget == "camlock" then
-                    camlockCustomPos = newUDim
-                elseif activeEditingWidget == "flyBtns" then
-                    flyButtonsCustomPos = newUDim
-                elseif activeEditingWidget == "funcList" then
-                    funcListCustomPos = newUDim
+                if hudConfig.activeEditingWidget == "autoJump" then
+                    hudConfig.autoJumpCustomPos = newUDim
+                elseif hudConfig.activeEditingWidget == "speedHud" then
+                    hudConfig.speedHudCustomPos = newUDim
+                elseif hudConfig.activeEditingWidget == "camlock" then
+                    hudConfig.camlockCustomPos = newUDim
+                elseif hudConfig.activeEditingWidget == "flyBtns" then
+                    hudConfig.flyButtonsCustomPos = newUDim
+                elseif hudConfig.activeEditingWidget == "funcList" then
+                    hudConfig.funcListCustomPos = newUDim
                 end
                 syncOverlayToTarget()
             end
@@ -1098,7 +1100,7 @@ do
 
     UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            isDraggingScreenWidget = false
+            hudConfig.isDraggingScreenWidget = false
         end
     end)
 end -- [End HUD Sub-Block 3]
@@ -1165,7 +1167,7 @@ local backSidebarStroke = Instance.new("UIStroke", backSidebar)
 backSidebarStroke.Color = Color3.fromRGB(55, 55, 70)
 backSidebarStroke.Thickness = 1.5
 
-local function getMainTotalPixels()
+getMainTotalPixels = function()
     return math.round(currentPartWidth * 100)
 end
 
@@ -1349,6 +1351,7 @@ end
 playerPage = createPageColumn(1)
 visualsPage = createPageColumn(2)
 settingsPage = createPageColumn(3)
+end -- [End 3D Part & SurfaceGui Setup]
 
 -- ====================================================================
 -- Universal UI Component Builder (Side Settings Window & Keybinds)
@@ -2382,8 +2385,6 @@ do
         return row
     end
 end -- [End 3D UI Component Builder Block]
-
-end -- [End 3D UI Block]
 
 -- ====================================================================
 -- ScreenGui for Mobile Flight Controls
