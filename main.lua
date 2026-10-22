@@ -1,4 +1,4 @@
--- LocalScript for Executor / Client Environment
+﻿-- LocalScript for Executor / Client Environment
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -50,6 +50,10 @@ local isTargetLocked = false
 local lockedTargetPart = nil
 local camlockTargetMode = "All" -- "All", "Players", "NPCs"
 local camlockFovMode = "180" -- "180", "360"
+local camlockShowFovCircle = true
+local camlockUseFovLimit = true
+local camlockFovRadius = 150
+local camlockFovColor = Color3.fromRGB(40, 230, 255)
 local CAMLOCK_SMOOTHNESS = 0.25 -- Camlock aim smoothness (0.15 - 0.4)
 local CAMLOCK_MAX_DIST = 250
 local isCharacterAliveAndValid, getBestTargetPart, getNearestTargetToCamera
@@ -116,8 +120,8 @@ end
 -- ====================================================================
 local screenHudGui, hudContainer, hudStroke, speedNumLabel, unitLabel, gaugeFill
 local autoJumpBtn, autoJumpStroke, btnStatusText
-local camlockBtn, camlockStroke, camlockStatusText
-local setCamlockButtonVisible, updateCamlockButtonVisual, triggerCamlockAction
+local camlockBtn, camlockStroke, camlockStatusText, camlockFovCircleFrame, camlockFovStroke
+local setCamlockButtonVisible, updateCamlockButtonVisual, triggerCamlockAction, updateCamlockFovVisual
 local setBhopScreenWidgets, triggerAutoJumpAction
 local refreshFlyButtonsVisibility
 local toggleEditWidgetPosition, stopEditingWidgetPosition, activeFuncListHud
@@ -641,6 +645,37 @@ do
     camlockStatusText.TextSize = 11
     camlockStatusText.Parent = camlockBtn
 
+    -- [ 3.1 Camlock FOV Circle (Screen Center) ]
+    camlockFovCircleFrame = Instance.new("Frame")
+    camlockFovCircleFrame.Name = "CamlockFovCircle"
+    camlockFovCircleFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+    camlockFovCircleFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+    camlockFovCircleFrame.Size = UDim2.new(0, camlockFovRadius * 2, 0, camlockFovRadius * 2)
+    camlockFovCircleFrame.BackgroundTransparency = 1
+    camlockFovCircleFrame.Visible = false
+    camlockFovCircleFrame.ZIndex = 1
+    camlockFovCircleFrame.Parent = screenHudGui
+    Instance.new("UICorner", camlockFovCircleFrame).CornerRadius = UDim.new(1, 0)
+
+    camlockFovStroke = Instance.new("UIStroke", camlockFovCircleFrame)
+    camlockFovStroke.Color = camlockFovColor
+    camlockFovStroke.Thickness = 1.5
+    camlockFovStroke.Transparency = 0.35
+
+    updateCamlockFovVisual = function()
+        if not camlockFovCircleFrame then return end
+        local shouldShow = camlockEnabled and camlockShowFovCircle and not isWardrobeVisible and not isWardrobeMode
+        camlockFovCircleFrame.Visible = shouldShow
+        camlockFovCircleFrame.Size = UDim2.new(0, camlockFovRadius * 2, 0, camlockFovRadius * 2)
+        if isTargetLocked then
+            camlockFovStroke.Color = Color3.fromRGB(255, 60, 60)
+            camlockFovStroke.Transparency = 0.15
+        else
+            camlockFovStroke.Color = camlockFovColor
+            camlockFovStroke.Transparency = 0.35
+        end
+    end
+
     updateCamlockButtonVisual = function(isLocked, targetInfo)
         if isLocked then
             local nameStr = "LOCKED"
@@ -665,6 +700,9 @@ do
             camlockIcon.ImageColor3 = Color3.fromRGB(180, 180, 200)
             camlockStroke.Color = Color3.fromRGB(60, 60, 80)
             TweenService:Create(camlockBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(22, 22, 28)}):Play()
+        end
+        if updateCamlockFovVisual then
+            updateCamlockFovVisual()
         end
         refreshAllFuncPills()
     end
@@ -756,14 +794,30 @@ do
             local dirToTarget = toTarget.Unit
             local dot = camLook:Dot(dirToTarget)
 
-            -- 180 FOV: must be in front of camera (dot >= 0)
-            if camlockFovMode == "180" and dot < 0 then
+            local viewport = camera.ViewportSize
+            local screenCenter = (viewport.X > 0 and viewport.Y > 0) and (viewport / 2) or Vector2.new(960, 540)
+            local screenPos, onScreen = camera:WorldToViewportPoint(part.Position)
+            local screenDist = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
+
+            -- FOV circle limit check
+            if camlockUseFovLimit then
+                if not onScreen or screenDist > camlockFovRadius then
+                    return
+                end
+            elseif camlockFovMode == "180" and dot < 0 then
+                -- 180 FOV: must be in front of camera (dot >= 0)
                 return
             end
 
-            -- Scoring: angle penalty + distance
-            local anglePenalty = (1 - dot) * 90
-            local totalScore = anglePenalty + (worldDistance * 0.75)
+            -- Scoring: favor closer to crosshair/screen center, plus world distance
+            local totalScore
+            if camlockUseFovLimit then
+                totalScore = screenDist + (worldDistance * 0.5)
+            else
+                local anglePenalty = (1 - dot) * 90
+                totalScore = anglePenalty + (worldDistance * 0.75)
+            end
+
             if totalScore < shortestDist then
                 shortestDist = totalScore
                 nearestTargetPart = part
@@ -823,9 +877,15 @@ do
                 updateCamlockButtonVisual(true, targetPlayer or target.Parent.Name)
             else
                 camlockStroke.Color = Color3.fromRGB(255, 160, 40)
+                if camlockFovStroke then
+                    camlockFovStroke.Color = Color3.fromRGB(255, 160, 40)
+                end
                 task.delay(0.25, function()
                     if not isTargetLocked then
                         camlockStroke.Color = Color3.fromRGB(60, 60, 80)
+                        if camlockFovStroke then
+                            camlockFovStroke.Color = camlockFovColor
+                        end
                     end
                 end)
             end
@@ -2677,6 +2737,7 @@ createToggleRow(visualsPage, "Camlock (Aim Lock)", false, function(v)
         updateCamlockButtonVisual(false)
     end
     setCamlockButtonVisible(v)
+    if updateCamlockFovVisual then updateCamlockFovVisual() end
 end, 1, function(sub, rowCtrl)
     createSubToggle(sub, "Show Lock Button", true, function(showBtn)
         setCamlockButtonVisible(camlockEnabled, showBtn)
@@ -2715,6 +2776,29 @@ end, 1, function(sub, rowCtrl)
     createSubSlider(sub, "Max Lock Distance", 50, 600, 250, function(v)
         CAMLOCK_MAX_DIST = v
     end, 8)
+    createSubToggle(sub, "Show FOV Circle", camlockShowFovCircle, function(val)
+        camlockShowFovCircle = val
+        if updateCamlockFovVisual then updateCamlockFovVisual() end
+    end, 9)
+    createSubToggle(sub, "Use FOV Circle Limit", camlockUseFovLimit, function(val)
+        camlockUseFovLimit = val
+    end, 10)
+    createSubSlider(sub, "FOV Circle Radius", 30, 450, camlockFovRadius, function(v)
+        camlockFovRadius = v
+        if updateCamlockFovVisual then updateCamlockFovVisual() end
+    end, 11)
+    createSubSelector(sub, "FOV Circle Color", {
+        { Name = "Cyan", Value = Color3.fromRGB(40, 230, 255) },
+        { Name = "Blue", Value = Color3.fromRGB(60, 160, 255) },
+        { Name = "Red", Value = Color3.fromRGB(255, 60, 60) },
+        { Name = "Green", Value = Color3.fromRGB(50, 225, 90) },
+        { Name = "Yellow", Value = Color3.fromRGB(255, 215, 0) },
+        { Name = "Purple", Value = Color3.fromRGB(180, 80, 255) },
+        { Name = "White", Value = Color3.fromRGB(255, 255, 255) },
+    }, 1, function(col)
+        camlockFovColor = col
+        if updateCamlockFovVisual then updateCamlockFovVisual() end
+    end, 12)
 end)
 
 createToggleRow(visualsPage, "ESP (Chams)", false, function(v)
@@ -4251,6 +4335,7 @@ do
                 isWardrobeAnimating = false
             end)
         end)
+        if updateCamlockFovVisual then updateCamlockFovVisual() end
     end
 
     hideWardrobeWithAnimation = function()
@@ -4334,6 +4419,7 @@ do
         end
         isWardrobeMode = false
         isWardrobeAnimating = false
+        if updateCamlockFovVisual then updateCamlockFovVisual() end
 
         -- Re-summon main UI if it was visible before wardrobe
         if wasMainUIVisibleBeforeWardrobe then
@@ -4598,15 +4684,27 @@ RunService:BindToRenderStep(CAMLOCK_BIND_NAME, Enum.RenderPriority.Camera.Value 
             if isCharacterAliveAndValid and isCharacterAliveAndValid(targetChar, lockedTargetPart) then
                 local dist = (lockedTargetPart.Position - myRoot.Position).Magnitude
                 if dist <= (CAMLOCK_MAX_DIST * 1.25) then
-                    targetValid = true
-                    local currentCamPos = camera.CFrame.Position
-                    local targetPos = lockedTargetPart.Position
-                    
-                    -- Target aim direction toward locked part
-                    local targetLookCFrame = CFrame.lookAt(currentCamPos, targetPos)
-                    
-                    -- Smoothly lerp camera rotation after CameraModule finishes
-                    camera.CFrame = camera.CFrame:Lerp(targetLookCFrame, CAMLOCK_SMOOTHNESS)
+                    local withinFov = true
+                    if camlockUseFovLimit then
+                        local viewport = camera.ViewportSize
+                        local screenCenter = (viewport.X > 0 and viewport.Y > 0) and (viewport / 2) or Vector2.new(960, 540)
+                        local screenPos, onScreen = camera:WorldToViewportPoint(lockedTargetPart.Position)
+                        local screenDist = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
+                        if not onScreen or screenDist > (camlockFovRadius * 1.5) then
+                            withinFov = false
+                        end
+                    end
+                    if withinFov then
+                        targetValid = true
+                        local currentCamPos = camera.CFrame.Position
+                        local targetPos = lockedTargetPart.Position
+                        
+                        -- Target aim direction toward locked part
+                        local targetLookCFrame = CFrame.lookAt(currentCamPos, targetPos)
+                        
+                        -- Smoothly lerp camera rotation after CameraModule finishes
+                        camera.CFrame = camera.CFrame:Lerp(targetLookCFrame, CAMLOCK_SMOOTHNESS)
+                    end
                 end
             end
         end
