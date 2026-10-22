@@ -21,6 +21,11 @@ local noclipEnabled = false
 local infJumpEnabled = false
 local flyEnabled, flySpeed = false, 50
 local espEnabled = false
+local espPlayerColor = Color3.fromRGB(255, 60, 60)
+local espNpcColor = Color3.fromRGB(50, 225, 90)
+local espPlayerEnabled = true
+local espNpcEnabled = true
+local espFillTransparency = 0.5
 local fullbrightEnabled = false
 local antiAfkEnabled = false
 
@@ -44,6 +49,7 @@ local camlockEnabled = false
 local isTargetLocked = false
 local lockedTargetPart = nil
 local camlockTargetMode = "All" -- "All", "Players", "NPCs"
+local camlockFovMode = "180" -- "180", "360"
 local CAMLOCK_SMOOTHNESS = 0.25 -- Camlock aim smoothness (0.15 - 0.4)
 local CAMLOCK_MAX_DIST = 250
 
@@ -668,24 +674,33 @@ do
 
         local nearestTargetPart = nil
         local shortestDist = math.huge
-        local screenCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+        local camCF = camera.CFrame
+        local camPos = camCF.Position
+        local camLook = camCF.LookVector
 
         local function checkTargetCandidate(char, hum, part)
             if not char or not hum or not part then return end
             if char == player.Character then return end
             if hum.Health <= 0 then return end
 
-            local worldDistance = (part.Position - myRoot.Position).Magnitude
-            if worldDistance <= CAMLOCK_MAX_DIST then
-                local screenPos, onScreen = camera:WorldToViewportPoint(part.Position)
-                if onScreen then
-                    local crosshairDistance = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
-                    local score = crosshairDistance + (worldDistance * 0.8)
-                    if score < shortestDist then
-                        shortestDist = score
-                        nearestTargetPart = part
-                    end
-                end
+            local toTarget = part.Position - camPos
+            local worldDistance = toTarget.Magnitude
+            if worldDistance > CAMLOCK_MAX_DIST then return end
+
+            local dirToTarget = toTarget.Unit
+            local dot = camLook:Dot(dirToTarget)
+
+            -- 180 FOV: must be in front of camera (dot >= 0)
+            if camlockFovMode == "180" and dot < 0 then
+                return
+            end
+
+            -- Scoring: angle penalty + distance
+            local anglePenalty = (1 - dot) * 90
+            local totalScore = anglePenalty + (worldDistance * 0.75)
+            if totalScore < shortestDist then
+                shortestDist = totalScore
+                nearestTargetPart = part
             end
         end
 
@@ -2337,40 +2352,106 @@ stopFly = function()
 end
 
 local espHighlights = {}
+
+local function clearAllESP()
+    for model, hl in pairs(espHighlights) do
+        if hl and hl.Parent then
+            pcall(function() hl:Destroy() end)
+        end
+    end
+    table.clear(espHighlights)
+end
+
 updateESP = function()
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= player and p.Character then
-            if espEnabled then
-                if not espHighlights[p] then
-                    local hl = Instance.new("Highlight")
-                    hl.Name = "ESP_Highlight"
-                    hl.FillColor = Color3.fromRGB(255, 60, 60)
-                    hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-                    hl.FillTransparency = 0.5
-                    hl.OutlineTransparency = 0
-                    hl.Adornee = p.Character
-                    hl.Parent = p.Character
-                    espHighlights[p] = hl
-                end
-            else
-                if espHighlights[p] then
-                    espHighlights[p]:Destroy()
-                    espHighlights[p] = nil
+    if not espEnabled then
+        clearAllESP()
+        return
+    end
+
+    local currentAliveModels = {}
+
+    local function highlightTarget(model, isPlayer)
+        if not model or not model.Parent then return end
+        if model == player.Character then return end
+        local hum = model:FindFirstChildOfClass("Humanoid")
+        if not hum or hum.Health <= 0 then return end
+
+        currentAliveModels[model] = true
+
+        local fillColor = isPlayer and espPlayerColor or espNpcColor
+        local hl = espHighlights[model]
+        if not hl or hl.Parent ~= model then
+            if hl then pcall(function() hl:Destroy() end) end
+            hl = Instance.new("Highlight")
+            hl.Name = "ESP_Highlight"
+            hl.Adornee = model
+            hl.Parent = model
+            espHighlights[model] = hl
+        end
+
+        hl.FillColor = fillColor
+        hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+        hl.FillTransparency = espFillTransparency
+        hl.OutlineTransparency = 0
+        hl.Enabled = true
+    end
+
+    -- 1. Highlight Players
+    if espPlayerEnabled then
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= player and p.Character then
+                highlightTarget(p.Character, true)
+            end
+        end
+    end
+
+    -- 2. Highlight Alive NPCs in Workspace
+    if espNpcEnabled then
+        local function scanForNPCs(parentObj, depth)
+            if depth > 3 then return end
+            for _, obj in ipairs(parentObj:GetChildren()) do
+                if obj:IsA("Model") and obj ~= player.Character then
+                    local hum = obj:FindFirstChildOfClass("Humanoid")
+                    if hum and hum.Health > 0 and not Players:GetPlayerFromCharacter(obj) then
+                        highlightTarget(obj, false)
+                    else
+                        if depth < 3 and not obj:FindFirstChildOfClass("Humanoid") then
+                            scanForNPCs(obj, depth + 1)
+                        end
+                    end
+                elseif obj:IsA("Folder") then
+                    scanForNPCs(obj, depth + 1)
                 end
             end
+        end
+        scanForNPCs(Workspace, 1)
+    end
+
+    -- Cleanup highlights for entities that are no longer valid or alive
+    for model, hl in pairs(espHighlights) do
+        if not currentAliveModels[model] then
+            if hl then pcall(function() hl:Destroy() end) end
+            espHighlights[model] = nil
         end
     end
 end
 
 Players.PlayerRemoving:Connect(function(p)
-    if espHighlights[p] then
-        espHighlights[p]:Destroy()
-        espHighlights[p] = nil
+    if p.Character and espHighlights[p.Character] then
+        pcall(function() espHighlights[p.Character]:Destroy() end)
+        espHighlights[p.Character] = nil
     end
     if lockedTargetPart and lockedTargetPart.Parent == p.Character then
-        isTargetLocked = false
-        lockedTargetPart = nil
-        updateCamlockButtonVisual(false)
+        local newTarget = getNearestTargetToCamera()
+        if newTarget then
+            lockedTargetPart = newTarget
+            local targetPlayer = Players:GetPlayerFromCharacter(newTarget.Parent)
+            updateCamlockButtonVisual(true, targetPlayer or newTarget.Parent.Name)
+        else
+            isTargetLocked = false
+            lockedTargetPart = nil
+            updateCamlockButtonVisual(false)
+        end
     end
 end)
 
@@ -2552,21 +2633,58 @@ end, 1, function(sub, rowCtrl)
             end
         end
     end, 5)
+    createSubSelector(sub, "Lock Angle (FOV)", {
+        { Name = "180 Deg (Front)", Value = "180" },
+        { Name = "360 Deg (All-Around)", Value = "360" },
+    }, 1, function(val)
+        camlockFovMode = val
+    end, 6)
     createSubSlider(sub, "Aim Smoothness (%)", 5, 100, 25, function(v)
         CAMLOCK_SMOOTHNESS = math.clamp(v / 100, 0.05, 1)
-    end, 6)
+    end, 7)
     createSubSlider(sub, "Max Lock Distance", 50, 600, 250, function(v)
         CAMLOCK_MAX_DIST = v
-    end, 7)
+    end, 8)
 end)
 
-createToggleRow(visualsPage, "Player ESP (Chams)", false, function(v)
+createToggleRow(visualsPage, "ESP (Chams)", false, function(v)
     espEnabled = v
     updateESP()
 end, 2, function(sub, rowCtrl)
+    local espColorOptions = {
+        { Name = "Red", Value = Color3.fromRGB(255, 60, 60) },
+        { Name = "Green", Value = Color3.fromRGB(50, 225, 90) },
+        { Name = "Blue", Value = Color3.fromRGB(60, 160, 255) },
+        { Name = "Yellow", Value = Color3.fromRGB(255, 215, 0) },
+        { Name = "Purple", Value = Color3.fromRGB(180, 80, 255) },
+        { Name = "Orange", Value = Color3.fromRGB(255, 140, 30) },
+        { Name = "Cyan", Value = Color3.fromRGB(40, 230, 255) },
+        { Name = "White", Value = Color3.fromRGB(255, 255, 255) },
+    }
+
     createKeybindRow(sub, "Toggle Keybind", nil, function()
         rowCtrl.toggle()
     end, 1)
+    createSubSelector(sub, "Player Color", espColorOptions, 1, function(col)
+        espPlayerColor = col
+        updateESP()
+    end, 2)
+    createSubSelector(sub, "NPC Color", espColorOptions, 2, function(col)
+        espNpcColor = col
+        updateESP()
+    end, 3)
+    createSubToggle(sub, "Show Players", true, function(v)
+        espPlayerEnabled = v
+        updateESP()
+    end, 4)
+    createSubToggle(sub, "Show Alive NPCs", true, function(v)
+        espNpcEnabled = v
+        updateESP()
+    end, 5)
+    createSubSlider(sub, "Fill Transparency (%)", 0, 100, 50, function(v)
+        espFillTransparency = v / 100
+        updateESP()
+    end, 6)
 end)
 
 createToggleRow(visualsPage, "Fullbright", false, function(v)
@@ -4228,10 +4346,20 @@ end)
 -- ====================================================================
 -- 1. Main RenderStepped Loop (Bhop & Speedometer)
 -- ====================================================================
+local espRefreshTimer = 0
 local loopConnection = RunService.RenderStepped:Connect(function(dt)
     local char = player.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+    -- Periodic ESP refresh for newly spawned characters/NPCs
+    if espEnabled then
+        espRefreshTimer = espRefreshTimer + dt
+        if espRefreshTimer >= 0.35 then
+            espRefreshTimer = 0
+            updateESP()
+        end
+    end
 
     -- 1. WalkSpeed / JumpPower Lock
     if hum then
@@ -4394,7 +4522,9 @@ RunService:BindToRenderStep(CAMLOCK_BIND_NAME, Enum.RenderPriority.Camera.Value 
         local targetHum = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
         local myRoot = getRootPart()
 
+        local targetValid = false
         if targetHum and targetHum.Health > 0 and myRoot and (lockedTargetPart.Position - myRoot.Position).Magnitude <= (CAMLOCK_MAX_DIST * 1.25) then
+            targetValid = true
             local currentCamPos = camera.CFrame.Position
             local targetPos = lockedTargetPart.Position
             
@@ -4403,10 +4533,25 @@ RunService:BindToRenderStep(CAMLOCK_BIND_NAME, Enum.RenderPriority.Camera.Value 
             
             -- Smoothly lerp camera rotation after CameraModule finishes
             camera.CFrame = camera.CFrame:Lerp(targetLookCFrame, CAMLOCK_SMOOTHNESS)
-        else
-            isTargetLocked = false
-            lockedTargetPart = nil
-            updateCamlockButtonVisual(false)
+        end
+
+        if not targetValid then
+            -- Auto-switch to next best target if current target died or went out of range
+            local nextTarget = getNearestTargetToCamera()
+            if nextTarget then
+                lockedTargetPart = nextTarget
+                local targetPlayer = Players:GetPlayerFromCharacter(nextTarget.Parent)
+                updateCamlockButtonVisual(true, targetPlayer or nextTarget.Parent.Name)
+                
+                local currentCamPos = camera.CFrame.Position
+                local targetPos = nextTarget.Position
+                local targetLookCFrame = CFrame.lookAt(currentCamPos, targetPos)
+                camera.CFrame = camera.CFrame:Lerp(targetLookCFrame, CAMLOCK_SMOOTHNESS)
+            else
+                isTargetLocked = false
+                lockedTargetPart = nil
+                updateCamlockButtonVisual(false)
+            end
         end
     end
 end)
