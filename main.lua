@@ -751,27 +751,103 @@ do
             return false
         end
 
+        -- Reject corpse, ragdoll, debris, deadbody, and fallen models
+        if nameLower:find("corpse") or nameLower:find("ragdoll") or nameLower:find("deadbody") or nameLower:find("dead_body")
+            or nameLower:find("debris") or nameLower:find("wreck") or nameLower:find("remains")
+            or nameLower:find("downed") or nameLower:find("knocked") then
+            return false
+        end
+
+        local parentNameLower = char.Parent and char.Parent.Name:lower() or ""
+        if parentNameLower:find("corpse") or parentNameLower:find("ragdoll") or parentNameLower:find("debris")
+            or parentNameLower:find("dead") or parentNameLower:find("grave") or parentNameLower:find("gore")
+            or parentNameLower:find("dropped") then
+            return false
+        end
+
         local hum = char:FindFirstChildOfClass("Humanoid")
         if not hum then return false end
 
         -- Check health & state
-        if hum.Health <= 0 then return false end
+        if hum.Health <= 0 or hum.MaxHealth <= 0 then return false end
         local state = hum:GetState()
-        if state == Enum.HumanoidStateType.Dead then return false end
+        if state == Enum.HumanoidStateType.Dead or state == Enum.HumanoidStateType.Physics then return false end
 
-        -- Check game death/knocked markers
-        if char:GetAttribute("Dead") == true or char:GetAttribute("Downed") == true or char:GetAttribute("IsDead") == true or char:GetAttribute("Killed") == true then
+        -- Check death/downed/corpse attributes
+        if char:GetAttribute("Dead") == true or char:GetAttribute("Downed") == true or char:GetAttribute("IsDead") == true 
+            or char:GetAttribute("Killed") == true or char:GetAttribute("Ragdoll") == true or char:GetAttribute("Ragdolled") == true
+            or char:GetAttribute("Corpse") == true or char:GetAttribute("KO") == true or char:GetAttribute("KnockedOut") == true
+            or char:GetAttribute("Unconscious") == true or char:GetAttribute("Carried") == true then
             return false
         end
-        local deadVal = char:FindFirstChild("Dead") or char:FindFirstChild("Downed") or char:FindFirstChild("IsDead") or char:FindFirstChild("Ragdoll")
-        if deadVal and (deadVal:IsA("BoolValue") and deadVal.Value == true) then
+
+        -- Check marker value objects
+        local deadMarker = char:FindFirstChild("Dead") or char:FindFirstChild("Downed") or char:FindFirstChild("IsDead")
+            or char:FindFirstChild("Ragdoll") or char:FindFirstChild("Ragdolled") or char:FindFirstChild("Corpse")
+            or char:FindFirstChild("KO") or char:FindFirstChild("Knocked") or char:FindFirstChild("Unconscious")
+        if deadMarker then
+            if deadMarker:IsA("BoolValue") and deadMarker.Value == true then
+                return false
+            elseif deadMarker:IsA("StringValue") and deadMarker.Value ~= "" and deadMarker.Value ~= "None" then
+                return false
+            end
+        end
+
+        -- Check CollectionService tags if supported
+        if char.HasTag then
+            if char:HasTag("Corpse") or char:HasTag("Ragdoll") or char:HasTag("Dead") or char:HasTag("Downed") or char:HasTag("KO") then
+                return false
+            end
+        end
+
+        -- Detect ragdoll physics constraints (BallSocketConstraints replacing Motor6Ds on death)
+        if char:FindFirstChildOfClass("BallSocketConstraint") or char:FindFirstChild("RagdollConstraint", true) then
             return false
+        end
+
+        -- Detect loot/carry/revive corpse ProximityPrompts
+        local prompt = char:FindFirstChildOfClass("ProximityPrompt", true)
+        if prompt then
+            local pAct = (prompt.ActionText or ""):lower()
+            local pObj = (prompt.ObjectText or ""):lower()
+            if pAct:find("loot") or pAct:find("search") or pAct:find("revive") or pAct:find("carry") or pAct:find("execute")
+                or pObj:find("corpse") or pObj:find("body") or pObj:find("remains") then
+                return false
+            end
         end
 
         -- If player, ensure this character is their CURRENT active character (not an old dead corpse)
         local targetPlayer = Players:GetPlayerFromCharacter(char)
         if targetPlayer then
             if targetPlayer.Character ~= char then
+                return false
+            end
+        else
+            -- If NPC, verify it's not a generic dead body NPC or lying flat on ground
+            if nameLower:find("body") or nameLower:find("dead") then
+                return false
+            end
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if root and root:IsA("BasePart") then
+                if math.abs(root.CFrame.UpVector.Y) < 0.35 then
+                    if hum.PlatformStand or hum.WalkSpeed <= 0 or hum.MoveDirection.Magnitude < 0.01 then
+                        return false
+                    end
+                end
+            end
+        end
+
+        -- Check Head / Neck joint integrity (standard Roblox death breaks neck)
+        local head = char:FindFirstChild("Head")
+        if head and head:IsA("BasePart") then
+            local hasNeck = head:FindFirstChildOfClass("Motor6D") or head:FindFirstChildOfClass("Weld") or head:FindFirstChild("Neck")
+            if not hasNeck then
+                local torso = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+                if torso then
+                    hasNeck = torso:FindFirstChild("Neck") or torso:FindFirstChildOfClass("Motor6D")
+                end
+            end
+            if not hasNeck then
                 return false
             end
         end
@@ -1451,8 +1527,10 @@ do
     sideContentHost.Parent = sideSettingsWindow
 
     local function typewriteSideTitle(targetText)
+        if not targetText then return end
         if sideTitleThread then task.cancel(sideTitleThread) end
         sideTitleThread = task.spawn(function()
+            local scrambleChars = {"-", "_", "/", "\\", ">", "<", "*", "!", "#", "$"}
             local current = ""
             for i = 1, #targetText do
                 local nextChar = targetText:sub(i, i)
@@ -2520,6 +2598,10 @@ updateESP = function()
         if model == player.Character then return end
         local hum = model:FindFirstChildOfClass("Humanoid")
         if not hum or hum.Health <= 0 then return end
+        if isCharacterAliveAndValid then
+            local p = getBestTargetPart and getBestTargetPart(model) or model:FindFirstChild("HumanoidRootPart")
+            if p and not isCharacterAliveAndValid(model, p) then return end
+        end
 
         currentAliveModels[model] = true
 
